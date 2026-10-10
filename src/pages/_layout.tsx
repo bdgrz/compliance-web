@@ -1,3 +1,4 @@
+import { state } from '@askrjs/askr';
 import { currentAuth, currentRoute } from '@askrjs/askr/router';
 import { LogOutIcon, MoonIcon, SunIcon } from '@askrjs/lucide';
 import {
@@ -16,9 +17,24 @@ import { ComplianceBrand } from '../components/compliance-brand.js';
 import { signOut } from '../features/authentication/auth.js';
 
 export function PageLayout({ children }: { children?: unknown }) {
+  const [signOutPending, setSignOutPending] = state(false);
+  const [signOutError, setSignOutError] = state<string | null>(null);
   const route = currentRoute();
   const isAuthenticationRoute =
     route.path === '/login' || route.path === '/auth/callback';
+
+  async function handleSignOut() {
+    if (signOutPending()) return;
+    setSignOutPending(true);
+    setSignOutError(null);
+    try {
+      await signOut();
+    } catch {
+      setSignOutError('We could not confirm sign-out. Please try again.');
+    } finally {
+      setSignOutPending(false);
+    }
+  }
 
   return (
     <ThemeScope defaultTheme="light" storageKey="bdgrz-compliance-theme">
@@ -43,7 +59,8 @@ export function PageLayout({ children }: { children?: unknown }) {
                       <Button
                         aria-label="Sign out"
                         variant="ghost"
-                        onPress={() => void signOut()}
+                        disabled={signOutPending()}
+                        onPress={() => void handleSignOut()}
                       >
                         <LogOutIcon size={16} aria-hidden="true" />
                         <Block as="span" hide={{ base: true, sm: false }}>
@@ -53,6 +70,7 @@ export function PageLayout({ children }: { children?: unknown }) {
                     ) : null}
                   </NavGroup>
                 </Navbar>
+                {signOutError() ? <p role="alert">{signOutError()}</p> : null}
               </Container>
             </Header>
           ) : null}
