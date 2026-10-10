@@ -152,7 +152,7 @@ export class TenantRequestError extends Error {
   }
 }
 
-// Self-service creation: the creator becomes the organization's first Org Admin immediately.
+// Self-service creation starts activation; organization readiness is confirmed separately.
 export async function registerTenant(
   name: string,
   slug: string,
@@ -165,6 +165,90 @@ export async function registerTenant(
   if (!result.ok) throw tenantRequestFailure(result, describeFailure(result));
 
   return result.data;
+}
+
+export type RegisteredTenant = NonNullable<RegisterTenantResponse200>;
+
+export type TenantReadiness =
+  | { kind: 'ready' }
+  | { kind: 'pending' }
+  | { kind: 'failed'; message: string };
+
+const readinessFailure =
+  'Your organization has been created, but we could not confirm it is ready yet. Check status to try again.';
+
+// One bounded check, without selecting or remembering an organization. The route owns selection
+// after navigation; registration and discoverability alone do not prove private workspace access.
+export async function checkRegisteredTenantReadiness(
+  tenant: RegisteredTenant
+): Promise<TenantReadiness> {
+  const controller = new AbortController();
+  let timer: number | undefined;
+  const deadline = new Promise<TenantReadiness>((resolve) => {
+    timer = window.setTimeout(() => {
+      controller.abort();
+      resolve({ kind: 'failed', message: readinessFailure });
+    }, 10_000);
+  });
+
+  try {
+    // The race also bounds transports that do not settle when aborted. A late read has no side
+    // effects and cannot change the result of this check or trigger navigation.
+    return await Promise.race([
+      readRegisteredTenantReadiness(tenant, controller.signal),
+      deadline,
+    ]);
+  } catch {
+    return { kind: 'failed', message: readinessFailure };
+  } finally {
+    window.clearTimeout(timer);
+    controller.abort();
+  }
+}
+
+async function readRegisteredTenantReadiness(
+  tenant: RegisteredTenant,
+  signal: AbortSignal
+): Promise<TenantReadiness> {
+  const resolved = await client.resolveMyTenantSlug({
+    params: { slug: tenant.slug },
+    signal,
+  });
+  signal.throwIfAborted();
+  if (!resolved.ok) {
+    return resolved.status === 404
+      ? { kind: 'pending' }
+      : { kind: 'failed', message: readinessFailure };
+  }
+
+  if (!resolved.data) return { kind: 'pending' };
+  if (
+    resolved.data.tenant_id !== tenant.tenant_id ||
+    resolved.data.current_slug !== tenant.slug ||
+    resolved.data.redirect
+  ) {
+    return { kind: 'failed', message: readinessFailure };
+  }
+
+  const memberships = await listMyTenants(signal);
+  signal.throwIfAborted();
+  const membership = memberships.find(
+    (item) => item.tenantId === tenant.tenant_id
+  );
+  if (!membership) return { kind: 'pending' };
+  if (membership.slug !== tenant.slug)
+    return { kind: 'failed', message: readinessFailure };
+
+  const workspace = await client.getTenant({
+    params: { tenant_id: tenant.tenant_id },
+    signal,
+  });
+  signal.throwIfAborted();
+  return workspace.ok &&
+    workspace.data?.tenant_id === tenant.tenant_id &&
+    workspace.data.slug === tenant.slug
+    ? { kind: 'ready' }
+    : { kind: 'failed', message: readinessFailure };
 }
 
 export async function changeCurrentTenantSlug(slug: string): Promise<void> {
@@ -240,12 +324,13 @@ export async function readEmailVerification(userId: string | null | undefined): 
   return 'unverified';
 }
 
-export async function listMyTenants(): Promise<TenantMembershipSummary[]> {
+export async function listMyTenants(signal?: AbortSignal): Promise<TenantMembershipSummary[]> {
   const tenants: TenantMembershipSummary[] = [];
   let cursor: string | null = null;
   do {
+    signal?.throwIfAborted();
     const result: Awaited<ReturnType<typeof client.listMyTenants>> =
-      await client.listMyTenants({ query: { cursor: cursor ?? undefined } });
+      await client.listMyTenants({ query: { cursor: cursor ?? undefined }, signal });
     if (!result.ok) {
       throw new Error(describeFailure(result));
     }
