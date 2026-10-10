@@ -480,3 +480,237 @@ describe('configured sign-in return', () => {
     }
   });
 });
+
+describe('unsuccessful configured sign-in', () => {
+  const requestKey = 'bdgrz.compliance.auth.request';
+  const sessionKey = 'bdgrz.compliance.auth.session';
+
+  afterEach(() => {
+    window.sessionStorage.clear();
+    vi.unstubAllGlobals();
+    vi.doUnmock('@askrjs/auth/oidc');
+    vi.resetModules();
+  });
+
+  it.each([
+    {
+      condition: 'ProviderCancellation',
+      failure: 'cancellation',
+      search: '?error=access_denied&error_description=Sign-in+was+cancelled.',
+      message: 'Sign-in was cancelled.',
+    },
+    {
+      condition: 'RejectedCodeExchange',
+      failure: 'exchange',
+      search: '?code=returned-code&state=failed-state',
+      message: 'The identity provider could not complete sign-in. Please retry.',
+    },
+    {
+      condition: 'UnsuccessfulAppContinuation',
+      failure: 'continuation',
+      search: '?code=returned-code&state=failed-state',
+      message: 'The authenticated identity could not be continued.',
+    },
+  ])(
+    'ShouldReturnAnAnonymousRetryPathGiven$condition',
+    async ({ failure, search, message }) => {
+      // Arrange
+      vi.resetModules();
+      window.sessionStorage.clear();
+      const storage = window.sessionStorage;
+      const origin = 'https://compliance.example.test';
+      let location = new URL('/login', origin);
+      const requestsAtNavigation: unknown[] = [];
+      const assign = vi.fn((url: string) => {
+        requestsAtNavigation.push(
+          JSON.parse(storage.getItem(requestKey) ?? 'null')
+        );
+        location = new URL(url);
+      });
+      const replaceState = vi.fn(
+        (_data: unknown, _unused: string, url: string) => {
+          location = new URL(url, origin);
+        }
+      );
+      vi.stubGlobal('window', {
+        location: {
+          get origin() {
+            return location.origin;
+          },
+          get pathname() {
+            return location.pathname;
+          },
+          get search() {
+            return location.search;
+          },
+          assign,
+        },
+        sessionStorage: storage,
+        history: { replaceState },
+      });
+      const configuration = {
+        enabled: true,
+        developer_identity_enabled: false,
+        issuer: 'https://provider.example.test',
+        client_id: 'configured-web-client',
+        scopes: ['openid', 'email'],
+        authorization_audience: 'https://compliance-api.example.test',
+      };
+      const failedRequest = {
+        state: 'failed-state',
+        nonce: 'failed-nonce',
+        codeVerifier: 'failed-pkce-verifier',
+      };
+      const retryRequest = {
+        state: 'retry-state',
+        nonce: 'retry-nonce',
+        codeVerifier: 'retry-pkce-verifier',
+      };
+      function authorizationUrl(request: typeof failedRequest, challenge: string) {
+        const url = new URL('/authorize', configuration.issuer);
+        url.search = new URLSearchParams({
+          response_type: 'code',
+          client_id: configuration.client_id,
+          redirect_uri: `${origin}/auth/callback`,
+          scope: configuration.scopes.join(' '),
+          state: request.state,
+          nonce: request.nonce,
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+        }).toString();
+        return url.toString();
+      }
+      const createAuthorizationRequest = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...failedRequest,
+          url: authorizationUrl(failedRequest, 'failed-pkce-challenge'),
+        })
+        .mockResolvedValueOnce({
+          ...retryRequest,
+          url: authorizationUrl(retryRequest, 'retry-pkce-challenge'),
+        });
+      const exchangeCode = vi.fn();
+      if (failure === 'exchange') {
+        exchangeCode.mockRejectedValueOnce(new Error(message));
+      } else if (failure === 'continuation') {
+        exchangeCode.mockResolvedValueOnce({
+          tokens: { access_token: 'failed-provider-token', expires_in: 300 },
+          principal: { id: 'provider-user', subject: 'provider-subject' },
+        });
+      }
+      const createOidcClient = vi.fn(() => ({
+        createAuthorizationRequest,
+        exchangeCode,
+      }));
+      vi.doMock('@askrjs/auth/oidc', () => ({ createOidcClient }));
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json(configuration))
+        .mockResolvedValueOnce(new Response(null, { status: 401 }));
+      let sessionAtContinuation: unknown;
+      if (failure === 'continuation') {
+        fetchMock.mockImplementationOnce(async () => {
+          sessionAtContinuation = JSON.parse(storage.getItem(sessionKey) ?? 'null');
+          return new Response(null, { status: 503 });
+        });
+      }
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const auth = await import('./auth.js');
+      const anonymous = {
+        authenticated: false,
+        principal: null,
+        session: null,
+        tenant: null,
+        scopes: [],
+      };
+
+      // Act: start signed out, then return from an unsuccessful provider attempt.
+      const beforeSignIn = await auth.resolveBrowserAuthentication();
+      await auth.beginSignIn('/controls');
+      location = new URL(`/auth/callback${search}`, origin);
+      await auth.completeOidcCallbackIfPresent();
+
+      // Assert: every failure returns a useful login error without app authority.
+      expect(beforeSignIn).toEqual(anonymous);
+      expect(requestsAtNavigation[0]).toEqual({
+        request: failedRequest,
+        returnPath: '/controls',
+      });
+      expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, '', '/login');
+      expect(location.pathname).toBe('/login');
+      expect(location.search).toBe('');
+      expect(auth.readAuthenticationError()).toBe(message);
+      expect(storage.getItem(sessionKey)).toBeNull();
+      if (failure === 'cancellation') {
+        expect(exchangeCode).not.toHaveBeenCalled();
+      } else {
+        expect(exchangeCode).toHaveBeenCalledExactlyOnceWith({
+          code: 'returned-code',
+          state: failedRequest.state,
+          request: failedRequest,
+        });
+      }
+      if (failure === 'continuation') {
+        expect(sessionAtContinuation).toMatchObject({
+          accessToken: 'failed-provider-token',
+          principal: { id: 'provider-user' },
+        });
+        const [path, init] = fetchMock.mock.calls[2]!;
+        expect(path).toBe('/api/v1/oidc-user-sessions');
+        expect(init?.method).toBe('POST');
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer failed-provider-token'
+        );
+      }
+
+      // Act: resolve the canonical session again, then retry from login.
+      const afterFailure = await auth.resolveBrowserAuthentication();
+      await auth.beginSignIn('/');
+
+      // Assert: a canonical 401 stays anonymous, with no provider fallback or
+      // continuation for cancellation/exchange rejection, and retry replaces PKCE.
+      expect(afterFailure).toEqual(anonymous);
+      expect(storage.getItem(sessionKey)).toBeNull();
+      expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+        '/auth/config',
+        '/auth/session',
+        ...(failure === 'continuation' ? ['/api/v1/oidc-user-sessions'] : []),
+        '/auth/session',
+      ]);
+      expect(fetchMock).toHaveBeenLastCalledWith('/auth/session', {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+      expect(createAuthorizationRequest).toHaveBeenCalledTimes(2);
+      expect(requestsAtNavigation[1]).toEqual({
+        request: retryRequest,
+        returnPath: '/',
+      });
+      const storedRetry = JSON.parse(storage.getItem(requestKey) ?? 'null') as {
+        request: typeof retryRequest;
+        returnPath: string;
+      };
+      expect(storedRetry).toEqual(requestsAtNavigation[1]);
+      for (const key of ['state', 'nonce', 'codeVerifier'] as const) {
+        expect(storedRetry.request[key]).not.toBe(failedRequest[key]);
+      }
+      expect(createOidcClient).toHaveBeenLastCalledWith({
+        issuer: configuration.issuer,
+        clientId: configuration.client_id,
+        redirectUri: `${origin}/auth/callback`,
+        scopes: configuration.scopes,
+      });
+      const expectedRetryUrl = new URL(
+        authorizationUrl(retryRequest, 'retry-pkce-challenge')
+      );
+      expectedRetryUrl.searchParams.set(
+        'audience',
+        configuration.authorization_audience
+      );
+      expect(assign).toHaveBeenCalledTimes(2);
+      expect(assign).toHaveBeenLastCalledWith(expectedRetryUrl.toString());
+    }
+  );
+});
