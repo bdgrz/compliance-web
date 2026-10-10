@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { stubApi } from '../../test-support/api-stub.js';
 import {
   normalizeReturnPath,
   parseAuthenticationConfiguration,
@@ -49,6 +50,118 @@ describe('authentication foundation', () => {
       scopes: [],
       authorization_audience: null,
     });
+  });
+});
+
+describe('confirmed sign-out', () => {
+  const sessionKey = 'bdgrz.compliance.auth.session';
+  const providerSession = JSON.stringify({
+    accessToken: 'provider-token',
+    expiresAt: Date.now() + 60_000,
+    principal: { id: 'provider-user', roles: ['provider-admin'] },
+    scopes: ['provider-admin'],
+  });
+  const tenant = { tenantId: 'tenant-acme', slug: 'acme', name: 'Acme' };
+  let auth: typeof import('./auth.js');
+  let tenants: typeof import('../tenants/tenants.js');
+  let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
+  let assign: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const api = stubApi();
+    api.reply('/api/v1/tenant-slugs/acme/mine', 200, {
+      tenant_id: tenant.tenantId,
+      current_slug: tenant.slug,
+      redirect: false,
+    });
+    api.reply('/api/v1/tenants/mine', 200, {
+      items: [{ tenant_id: tenant.tenantId, slug: tenant.slug, name: tenant.name }],
+      next_cursor: null,
+    });
+    auth = await import('./auth.js');
+    tenants = await import('../tenants/tenants.js');
+    await expect(
+      tenants.resolveTenantRoute('acme', { pathname: '/acme', search: '', hash: '' })
+    ).resolves.toEqual({ kind: 'ready', tenant });
+    window.sessionStorage.setItem(sessionKey, providerSession);
+    assign = vi.fn();
+    vi.stubGlobal('window', {
+      sessionStorage: window.sessionStorage,
+      localStorage: window.localStorage,
+      location: { assign },
+    });
+    fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    tenants.clearActiveTenant();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function expectSessionPreserved() {
+    expect(window.sessionStorage.getItem(sessionKey)).toBe(providerSession);
+    expect(tenants.currentTenant()).toEqual(tenant);
+    expect(tenants.readRememberedSlug()).toBe('acme');
+    expect(assign).not.toHaveBeenCalled();
+  }
+
+  it.each([400, 401, 403, 500, 503])(
+    'ShouldPreserveSessionAndRejectGivenLogoutHttpFailure%s',
+    async (status) => {
+      // Arrange
+      fetchMock.mockResolvedValueOnce(new Response(null, { status }));
+
+      // Act
+      const logout = auth.signOut();
+
+      // Assert
+      await expect(logout).rejects.toThrow(/sign.out/i);
+      expectSessionPreserved();
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/auth/logout', { method: 'POST' });
+    }
+  );
+
+  it('ShouldPreserveSessionAndRejectGivenLogoutNetworkFailure', async () => {
+    // Arrange
+    const failure = new TypeError('Network unavailable');
+    fetchMock.mockRejectedValueOnce(failure);
+
+    // Act
+    const logout = auth.signOut();
+
+    // Assert
+    await expect(logout).rejects.toBe(failure);
+    expectSessionPreserved();
+  });
+
+  it('ShouldWaitForServerConfirmationBeforeClearingSessionAndNavigating', async () => {
+    // Arrange
+    let confirm!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { confirm = resolve; }));
+
+    // Act
+    const logout = auth.signOut();
+
+    // Assert: a pending request cannot claim success or erase retry state.
+    expectSessionPreserved();
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/auth/logout', { method: 'POST' });
+
+    // Act
+    confirm(new Response(null, { status: 204 }));
+    await logout;
+
+    // Assert
+    expect(window.sessionStorage.getItem(sessionKey)).toBeNull();
+    expect(tenants.currentTenant()).toBeNull();
+    expect(tenants.readRememberedSlug()).toBeNull();
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/login');
   });
 });
 
@@ -292,7 +405,10 @@ describe('configured sign-in return', () => {
     vi.resetModules();
   });
 
-  it('ShouldReturnTheCanonicalUserGivenASuccessfulConfiguredSignIn', async () => {
+  it.each([
+    { condition: 'ASuccessfulConfiguredSignIn', confirmedLogout: false },
+    { condition: 'ConfirmedLogoutAndConfiguredReSignIn', confirmedLogout: true },
+  ])('ShouldReturnTheCanonicalUserGiven$condition', async ({ confirmedLogout }) => {
     // Arrange
     vi.resetModules();
     window.sessionStorage.clear();
@@ -302,7 +418,7 @@ describe('configured sign-in return', () => {
     let requestAtNavigation: unknown;
     const assign = vi.fn((url: string) => {
       requestAtNavigation = JSON.parse(storage.getItem(requestKey) ?? 'null');
-      location = new URL(url);
+      location = new URL(url, origin);
     });
     const replaceState = vi.fn(
       (_data: unknown, _unused: string, url: string) => {
@@ -374,13 +490,38 @@ describe('configured sign-in return', () => {
     };
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json(configuration))
+      .mockResolvedValueOnce(Response.json(configuration));
+    if (confirmedLogout) {
+      storage.setItem(sessionKey, JSON.stringify({
+        accessToken: 'previous-provider-token',
+        expiresAt: Date.now() + 60_000,
+        principal: { id: 'previous-provider-user', roles: ['provider-admin'] },
+        scopes: ['provider-admin'],
+      }));
+      fetchMock
+        .mockResolvedValueOnce(Response.json({ id: 'previous-canonical-user', email_address: null }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    }
+    fetchMock
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockReturnValueOnce(continuation)
       .mockResolvedValueOnce(Response.json(canonicalSession));
     vi.stubGlobal('fetch', fetchMock);
     const auth = await import('./auth.js');
     const returnPath = '/controls?state=open#current';
+    const logoutOffset = confirmedLogout ? 2 : 0;
+
+    if (confirmedLogout) {
+      // Act: end an existing canonical app session before starting a fresh sign-in.
+      const previous = await auth.resolveBrowserAuthentication();
+      await auth.signOut();
+
+      // Assert: server confirmation removes provider state and returns to login.
+      expect(previous.principal?.id).toBe('previous-canonical-user');
+      expect(storage.getItem(sessionKey)).toBeNull();
+      expect(assign).toHaveBeenCalledExactlyOnceWith('/login');
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/auth/logout', { method: 'POST' });
+    }
 
     // Act: start signed out and leave for the configured provider.
     const signedOut = await auth.resolveBrowserAuthentication();
@@ -408,7 +549,8 @@ describe('configured sign-in return', () => {
       'audience',
       configuration.authorization_audience
     );
-    expect(assign).toHaveBeenCalledExactlyOnceWith(
+    expect(assign).toHaveBeenCalledTimes(confirmedLogout ? 2 : 1);
+    expect(assign).toHaveBeenLastCalledWith(
       expectedAuthorizationUrl.toString()
     );
 
@@ -418,7 +560,7 @@ describe('configured sign-in return', () => {
       origin
     );
     const callback = auth.completeOidcCallbackIfPresent();
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3 + logoutOffset));
 
     // Assert: exchange the exact saved correlation and PKCE values, then continue
     // with the exchanged bearer before restoring the requested app location.
@@ -434,7 +576,7 @@ describe('configured sign-in return', () => {
       scopes: configuration.scopes,
     });
     expect(storage.getItem(requestKey)).toBeNull();
-    const [continuationPath, continuationInit] = fetchMock.mock.calls[2]!;
+    const [continuationPath, continuationInit] = fetchMock.mock.calls[2 + logoutOffset]!;
     expect(continuationPath).toBe('/api/v1/oidc-user-sessions');
     expect(continuationInit?.method).toBe('POST');
     expect(continuationInit?.body).toBe('{}');
@@ -468,11 +610,11 @@ describe('configured sign-in return', () => {
       scopes: [],
     });
     expect(context.principal?.id).not.toBe(providerPrincipal.id);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(4 + logoutOffset);
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/auth/config', {
       headers: { Accept: 'application/json' },
     });
-    for (const call of [2, 4]) {
+    for (const call of [2 + logoutOffset, 4 + logoutOffset]) {
       expect(fetchMock).toHaveBeenNthCalledWith(call, '/auth/session', {
         headers: { Accept: 'application/json' },
         credentials: 'same-origin',

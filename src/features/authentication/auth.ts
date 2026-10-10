@@ -261,10 +261,9 @@ export async function authorizedFetch(
 }
 
 export async function signOut(): Promise<void> {
-  try {
-    await fetch('/auth/logout', { method: 'POST' });
-  } catch {
-    // Local sign-out must still succeed even if the network call fails.
+  const response = await fetch('/auth/logout', { method: 'POST' });
+  if (!response.ok) {
+    throw new Error('The app could not confirm sign-out. Please try again.');
   }
   window.sessionStorage.removeItem(sessionKey);
   clearActiveTenant();
