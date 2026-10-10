@@ -4,7 +4,7 @@ on:
   push:
     branches: [develop]
   pull_request:
-    branches: [develop]
+    branches: [develop, feat/web-client-bootstrap]
   workflow_dispatch:
 
 permissions:
