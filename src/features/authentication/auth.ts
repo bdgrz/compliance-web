@@ -203,46 +203,47 @@ export async function completeOidcCallbackIfPresent(): Promise<void> {
 }
 
 export async function resolveBrowserAuthentication(): Promise<AuthContext> {
-  const configuration = await loadConfiguration();
-  if (!configuration.enabled) {
-    const response = await fetch('/auth/session', {
-      headers: { Accept: 'application/json' },
-    });
-    if (response.status === 401) return anonymousContext();
-    if (!response.ok) throw new Error('The authentication session is unavailable.');
-
-    const session = (await response.json()) as {
-      id: string;
-      email_address: string;
-    };
-    return {
-      authenticated: true,
-      principal: {
-        id: session.id,
-        subject: session.id,
-        email: session.email_address,
-      },
-      session: null,
-      tenant: null,
-      scopes: [],
-    };
-  }
-
-  const session = readJson<StoredSession>(sessionKey);
+  await loadConfiguration();
+  const storedSession = readJson<StoredSession>(sessionKey);
   if (
-    !session ||
-    (session.expiresAt !== null && session.expiresAt <= Date.now())
+    !storedSession ||
+    (storedSession.expiresAt !== null && storedSession.expiresAt <= Date.now())
   ) {
     window.sessionStorage.removeItem(sessionKey);
+  }
+
+  const response = await fetch('/auth/session', {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  });
+  if (response.status === 401) {
+    window.sessionStorage.removeItem(sessionKey);
     return anonymousContext();
+  }
+  if (!response.ok) throw new Error('The authentication session is unavailable.');
+
+  const session = (await response.json()) as {
+    id: string;
+    email_address: string | null;
+  } | null;
+  if (
+    !session ||
+    typeof session.id !== 'string' ||
+    session.id.trim().length === 0
+  ) {
+    throw new Error('The authentication session response is invalid.');
   }
 
   return {
     authenticated: true,
-    principal: session.principal,
+    principal: {
+      id: session.id,
+      subject: session.id,
+      email: session.email_address,
+    },
     session: null,
     tenant: null,
-    scopes: session.scopes,
+    scopes: [],
   };
 }
 
