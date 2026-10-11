@@ -25,6 +25,7 @@ export interface ControlContent {
 
 export interface ControlDraft {
   controlId: string;
+  draftVersionId: string | null;
   identifier: string;
   revision: number;
   status: string;
@@ -64,6 +65,7 @@ type ContentData = {
 
 type DraftData = {
   control_id: string;
+  draft_version_id?: string;
   identifier: string;
   revision: number | string;
   status: string;
@@ -102,6 +104,7 @@ function toBody(content: ControlContent) {
 function toDraft(data: DraftData): ControlDraft {
   return {
     controlId: data.control_id,
+    draftVersionId: data.draft_version_id ?? null,
     identifier: data.identifier,
     revision: Number(data.revision),
     status: data.status,
@@ -194,3 +197,71 @@ export async function listControlDraftRevisions(programId: string, controlId: st
 }
 
 export { ProgramRequestError };
+
+export interface ControlDraftOwnerPerson {
+  tenantId: string;
+  programId: string;
+  controlId: string;
+  draftVersionId: string | null;
+  revision: number;
+  designation: {
+    personId: string;
+    designationId: string;
+    rationale: string;
+    actor: { kind: string; id: string; display: string };
+    designatedAt: string;
+  } | null;
+}
+
+// Owner conflicts include disabled lifecycle and closed drafts as well as stale revisions.
+// Keep the server's detail rather than converting every conflict to a stale edit.
+function ownerFailure(result: { kind: string; status: number; error?: unknown }, action: string) {
+  const problem = typeof result.error === 'object' && result.error !== null
+    ? result.error as { detail?: unknown; transient?: unknown; message?: unknown }
+    : {};
+  const fallback = result.status === 401
+    ? `Sign in again to ${action}.`
+    : `Unable to ${action}.`;
+  const message = typeof problem.detail === 'string' && problem.detail.length > 0
+    ? problem.detail
+    : typeof problem.message === 'string' && problem.message.length > 0
+      ? problem.message
+      : fallback;
+  return new ProgramRequestError(message, result.kind === 'http' ? result.status : null, problem.transient === true);
+}
+
+export async function getControlDraftOwnerPerson(programId: string, controlId: string): Promise<ControlDraftOwnerPerson> {
+  const tenantId = requireActiveTenantId();
+  const result = await client.getControlDraftOwnerPerson({
+    params: { tenant_id: tenantId, program_id: programId, control_id: controlId },
+  });
+  if (!result.ok) throw ownerFailure(result, 'load the accountable person');
+  const data = result.data;
+  if (!data) throw new ProgramRequestError('The control was not found.', 404, false);
+  if (data.tenant_id !== tenantId || data.program_id !== programId || data.control_id !== controlId) {
+    throw new ProgramRequestError('The accountable person response does not match this control. Reload to try again.', null, false);
+  }
+  return {
+    tenantId: data.tenant_id,
+    programId: data.program_id,
+    controlId: data.control_id,
+    draftVersionId: data.draft_version_id,
+    revision: Number(data.revision),
+    designation: data.designation ? {
+      personId: data.designation.person_id,
+      designationId: data.designation.designation_id,
+      rationale: data.designation.rationale,
+      actor: data.designation.actor,
+      designatedAt: data.designation.designated_at,
+    } : null,
+  };
+}
+
+export async function designateControlOwnerPerson(programId: string, controlId: string, expectedRevision: number, personId: string | null, rationale: string): Promise<void> {
+  const tenantId = requireActiveTenantId();
+  const result = await client.designateControlOwnerPerson({
+    params: { tenant_id: tenantId, program_id: programId, control_id: controlId },
+    body: { expected_revision: expectedRevision, ...(personId ? { person_id: personId } : {}), rationale: rationale.trim() },
+  });
+  if (!result.ok) throw ownerFailure(result, 'save the accountable person');
+}

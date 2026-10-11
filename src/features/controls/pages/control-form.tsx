@@ -189,7 +189,7 @@ export function ControlForm({
           />
         </label>
         <label className="registration-field">
-          <span>Owner (optional)</span>
+          <span>Descriptive owner reference (optional)</span>
           <input
             type="text"
             value={content().ownerReference ?? ''}
@@ -200,6 +200,10 @@ export function ControlForm({
               })
             }
           />
+          <small>
+            This text is descriptive. Designate the accountable workforce person
+            on the control detail.
+          </small>
         </label>
         <fieldset className="control-applicability-editor">
           <legend>Applicability</legend>

@@ -11,6 +11,7 @@ import { ControlsPage } from './pages/controls-list.js';
 const tenantId = '0190a1b2-0000-7000-8000-000000000001';
 const programId = '0190a1b2-0000-7000-8000-0000000000b1';
 const controlId = '0190a1b2-0000-7000-8000-0000000000c1';
+const draftVersionId = '0190a1b2-0000-7000-8000-0000000000d1';
 const base = `/api/v1/tenants/${tenantId}`;
 const controls = `${base}/programs/${programId}/controls`;
 const draft = `${controls}/${controlId}/draft`;
@@ -66,6 +67,7 @@ function draftBody(revision = 2) {
     tenant_id: tenantId,
     program_id: programId,
     control_id: controlId,
+    draft_version_id: draftVersionId,
     identifier: 'AC-01',
     revision,
     status: 'draft',
@@ -80,6 +82,11 @@ function draftBody(revision = 2) {
 
 function detailAnswers(revision = 2) {
   api.reply(`GET ${draft}`, 200, draftBody(revision));
+  api.reply(`GET ${draft}/owner-person`, 200, {
+    tenant_id: tenantId, program_id: programId, control_id: controlId,
+    draft_version_id: draftVersionId, revision, designation: null,
+  });
+  api.reply(`GET ${base}/people`, 200, { items: [], next_cursor: null });
   api.reply(`GET ${controls}/${controlId}/current-version`, 404, problem(404, 'The control has no approved version.'));
   api.reply(`GET ${controls}/${controlId}/decisions`, 200, { items: [], next_cursor: null });
   api.reply(`GET ${controls}/${controlId}/versions`, 200, { items: [], next_cursor: null });
