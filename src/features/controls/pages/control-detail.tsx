@@ -31,6 +31,7 @@ import {
   previewControlImpact,
 } from '../lifecycle.js';
 import { ControlForm } from './control-form.js';
+import { ControlOwnerPersonCard } from './control-owner-person.js';
 import {
   ApproveForm,
   ImpactPreviewPanel,
@@ -68,6 +69,7 @@ export function ControlDetailPage({
   controlId: string;
 }) {
   const [version, setVersion] = state(0);
+  const [ownerVersion, setOwnerVersion] = state(0);
   const [written, setWritten] = state<number | undefined>(undefined);
   const control = resource(
     () => getControlDraft(programId, controlId, written()),
@@ -85,7 +87,10 @@ export function ControlDetailPage({
         : loadLifecycle(programId, controlId, revision),
     [programId, controlId, revision, version()]
   );
-  const changed = () => setVersion(version() + 1);
+  const changed = () => {
+    setOwnerVersion(ownerVersion() + 1);
+    setVersion(version() + 1);
+  };
   const back = (
     <a href={organizationPath(`/programs/${programId}/controls`)}>
       Back to controls
@@ -134,7 +139,7 @@ export function ControlDetailPage({
   async function save(_identifier: string, content: ControlContent) {
     await reviseControlDraft(programId, controlId, current.revision, content);
     setWritten(current.revision + 1);
-    setVersion(version() + 1);
+    changed();
     return 'Control draft saved.';
   }
 
@@ -356,6 +361,16 @@ export function ControlDetailPage({
       <Stack gap="md">
         {back}
         {lifecycleBody}
+        <ControlOwnerPersonCard
+          programId={programId}
+          controlId={controlId}
+          revision={current.revision}
+          draftVersionId={current.draftVersionId}
+          refreshVersion={ownerVersion()}
+          detailPending={control.pending}
+          onSaved={() => setVersion(version() + 1)}
+          onReload={changed}
+        />
         <Card>
           <CardHeader>
             <CardTitle>Draft history</CardTitle>

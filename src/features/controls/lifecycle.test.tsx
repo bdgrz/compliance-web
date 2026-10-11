@@ -151,10 +151,13 @@ function answers(options: {
   impact?: unknown;
   retired?: boolean;
 }) {
+  const openDraft = !options.approved || (options.impact as { kind?: string } | undefined)?.kind === 'successor';
+  const draftVersionId = options.approved && openDraft ? successorId : versionId;
   api.reply(`GET ${control}/draft`, 200, {
     tenant_id: tenantId,
     program_id: programId,
     control_id: controlId,
+    draft_version_id: draftVersionId,
     identifier: 'AC-01',
     revision: options.revision,
     status: 'draft',
@@ -165,6 +168,12 @@ function answers(options: {
     last_changed_by_display: 'Casey Lead',
     last_changed_at: '2026-09-20T00:00:00Z',
   });
+  api.reply(`GET ${control}/draft/owner-person`, 200, {
+    tenant_id: tenantId, program_id: programId, control_id: controlId,
+    draft_version_id: openDraft ? draftVersionId : null,
+    revision: options.revision, designation: null,
+  });
+  api.reply(`GET ${base}/people`, 200, { items: [], next_cursor: null });
   api.reply(`GET ${control}/draft/revisions`, 200, {
     items: [],
     next_cursor: null,

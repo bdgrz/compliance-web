@@ -6449,6 +6449,21 @@ export type PortiaEA6D5265BAC64B7B7ECBB403179F0802AEF5CDBFF6D32E0FCDF3EF54CB637D
   "next_cursor": string | null;
 } | null;
 
+export type PortiaEBE5A96E050BF6337DBCBEE3D35EFF8F34A4258AB0FCD503BD90B1C531FAAE19 = {
+  "tenant_id": string;
+  "program_id": string;
+  "control_id": string;
+  "draft_version_id": string | null;
+  "revision": number | string;
+  "designation": {
+    "person_id": string;
+    "designation_id": string;
+    "rationale": string;
+    "actor": { "kind": string; "id": string; "display": string };
+    "designated_at": string;
+  } | null;
+} | null;
+
 export type PortiaEBEBAE40CDBFE8B4726C2E5FDB6EE27438942900064BA238E5F7452B92135107 = Array<string | null> | null;
 
 export type PortiaEC8A68FE610BE733B5FB5E10D0C0A79743573CEEBB9114A5BBD9B4542987EC3B = {
