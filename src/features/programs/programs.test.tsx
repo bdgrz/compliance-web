@@ -86,6 +86,47 @@ afterEach(() => {
 });
 
 describe('program plan and setup work (R1-01 frontend #177)', () => {
+  it.each([
+    ['acme', '/acme/applications'],
+    ['northwind', '/northwind/applications'],
+  ])('ShouldLinkToOrganizationApplicationInventoryGivenALoadedProgram (%s)', async (slug, href) => {
+    // Arrange
+    api.reply(`/api/v1/tenant-slugs/${slug}/mine`, 200, { tenant_id: tenantId, current_slug: slug, redirect: false });
+    api.reply('/api/v1/tenants/mine', 200, {
+      items: [{ tenant_id: tenantId, name: 'Acme Corp', slug }],
+      next_cursor: null,
+    });
+    expect(await resolveTenantRoute(slug, { pathname: `/${slug}/programs`, search: '', hash: '' })).toMatchObject({ kind: 'ready' });
+    programAnswers();
+
+    // Act
+    const container = mount(() => <ProgramDetailPage programId={programId} />);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('SOC 2 2026'));
+
+    // Assert
+    const inventory = container.querySelector(`a[href="${href}"]`);
+    expect(inventory).not.toBeNull();
+    expect(inventory?.textContent).toBe('Organization application inventory');
+  });
+
+  it.each([
+    { status: 403, title: 'This program is not available to you' },
+    { status: 404, title: 'Program not found' },
+  ])('ShouldHideOrganizationApplicationInventoryGivenAnUnavailableProgram ($status)', async ({ status, title }) => {
+    // Arrange
+    programAnswers();
+    api.reply(`GET ${program}`, status, problem(status, 'Program unavailable.'));
+
+    // Act
+    const container = mount(() => <ProgramDetailPage programId={programId} />);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe(title));
+
+    // Assert
+    expect(container.querySelector('a[href="/acme/applications"]')).toBeNull();
+    expect(container.textContent).not.toContain('Organization application inventory');
+    expect(container.querySelector('a[href="/acme/programs"]')?.textContent).toBe('Back to programs');
+  });
+
   it('ShouldShowStagePlanSetupWorkAndUnconfirmedTargets', async () => {
     // Arrange
     programAnswers();
