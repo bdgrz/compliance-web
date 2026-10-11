@@ -5215,6 +5215,12 @@ export type PortiaBE625002347E2BBF2D03CC7136B2D484C2DA3FD77DB41B321C10C3D110B761
   "system_instance_id": string;
 } | null;
 
+export type PortiaBE729F63FE0956BC7EA13CE34BDA497A9489B0848D30424201F0DC1AB16B3D48 = {
+  "tenant_id": string;
+  "status": string;
+  "failure_code": string | null;
+} | null;
+
 export type PortiaBF61A0E2E929B0B0C2C8FD90D26A50B2912F90E0432F13057B32A47660B93B93 = {
   "items": Array<{
   "tenant_id": string;
