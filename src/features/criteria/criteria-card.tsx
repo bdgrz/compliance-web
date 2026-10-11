@@ -17,9 +17,6 @@ function failureMessage(error: Error, subject: string) {
   if (error instanceof ProgramRequestError && error.status === 403) {
     return `You do not have permission to change the ${subject}.`;
   }
-  if (error instanceof ProgramRequestError && error.status === 409 && !error.transient) {
-    return 'Someone else changed this program since you opened it. Reload to see their changes, then choose again.';
-  }
   return error.message;
 }
 
