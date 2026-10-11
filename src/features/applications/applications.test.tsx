@@ -219,6 +219,118 @@ describe('applications and reviewed systems (R1-10a frontend #212)', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('The name is required.');
   });
 
+  it('ShouldReopenPopulatedManualApplicationGivenSuccessfulSaveAndFreshMount', async () => {
+    // Arrange
+    const savedId = '0190a1b2-0000-7000-8000-0000000000a9';
+    const savedPath = `${base}/applications/${savedId}`;
+    const systemOwnerId = '0190a1b2-0000-7000-8000-0000000000f1';
+    const accessOwnerId = '0190a1b2-0000-7000-8000-0000000000f2';
+    const people = [
+      { personId: systemOwnerId, name: 'Alex Rivera' },
+      { personId: accessOwnerId, name: 'Blair Chen' },
+    ].map(({ personId, name }) => ({
+      tenant_id: tenantId,
+      person_id: personId,
+      revision: 1,
+      display_name: name,
+      work_email: null,
+      source_kind: 'manual',
+      last_changed_by: { kind: 'member', id: 'm', display: 'Casey Lead' },
+      last_changed_at: '2026-10-11T12:00:00Z',
+    }));
+    const assign = vi.fn();
+    // Capture navigation intent; this unit test does not execute browser navigation.
+    vi.stubGlobal('window', { location: { assign } });
+    api.reply(`GET ${base}/applications`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${base}/people`, 200, { items: people, next_cursor: null });
+    api.reply(`POST ${base}/applications`, 200, { application_id: savedId });
+    const container = mount(ApplicationsPage);
+    await vi.waitFor(() => expect(container.querySelectorAll('select option')).toHaveLength(6));
+    typeInto(container, 'Application name', ' People Operations Portal ');
+    typeInto(container, 'Purpose', ' Coordinates staff onboarding ');
+    typeInto(container, 'Owner', ' People Operations ');
+    typeInto(container, 'Data classification', ' confidential ');
+    for (const [label, personId] of [['System owner', systemOwnerId], ['Access owner', accessOwnerId]]) {
+      const select = [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label))!
+        .querySelector('select')!;
+      select.value = personId;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Act
+    container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(`/acme/applications/${savedId}`));
+
+    // Assert
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(api.bodies.filter((request) => request.method === 'POST')).toEqual([{
+      method: 'POST',
+      path: `${base}/applications`,
+      body: {
+        name: 'People Operations Portal',
+        purpose: 'Coordinates staff onboarding',
+        owner_reference: 'People Operations',
+        classification: 'confidential',
+        system_owner_person_id: systemOwnerId,
+        access_owner_person_id: accessOwnerId,
+      },
+    }]);
+
+    // Dispose the draft. Reopened values must come from new server reads.
+    mounted.pop()!.cleanup();
+    const saved = applicationBody(1, {
+      application_id: savedId,
+      name: 'People Operations Portal',
+      purpose: 'Coordinates staff onboarding',
+      owner_reference: 'People Operations',
+      classification: 'confidential',
+      system_owner_person_id: systemOwnerId,
+      access_owner_person_id: accessOwnerId,
+      has_system_instances: false,
+      unresolved: ['owner_unverified', 'classification_unverified', 'system_instances_missing'],
+      last_changed_by_member_id: 'recorder',
+      last_changed_by_display: 'Jordan Recorder',
+      last_changed_at: '2026-10-11T14:30:00Z',
+    });
+    const gapLabels = ['Owner not verified', 'Classification not verified', 'System instances missing'];
+    api.reply(`GET ${base}/applications`, 200, { items: [saved], next_cursor: null });
+    const readsBeforeInventory = api.bodies.length;
+    const inventory = mount(ApplicationsPage);
+    await vi.waitFor(() => expect(inventory.querySelector(`a[href="/acme/applications/${savedId}"]`)?.textContent)
+      .toBe('People Operations Portal'));
+    expect(api.bodies.slice(readsBeforeInventory)).toContainEqual({ method: 'GET', path: `${base}/applications`, body: undefined });
+    expect(inventory.querySelector('.application-list')?.textContent).toContain('Coordinates staff onboarding');
+    expect(inventory.querySelector('.application-list')?.textContent).toContain('confidential');
+    expect(inventory.querySelector('.application-list')?.textContent).toContain('No reviewed systems yet');
+    for (const label of gapLabels) expect(inventory.querySelector('.application-unresolved')?.textContent).toContain(label);
+    mounted.pop()!.cleanup();
+
+    api.reply(`GET ${savedPath}`, 200, saved);
+    api.reply(`GET ${savedPath}/system-instances`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${savedPath}/revisions`, 200, { items: [], next_cursor: null });
+    const readsBeforeDetail = api.bodies.length;
+    const detail = mount(() => <ApplicationDetailPage applicationId={savedId} />);
+    await vi.waitFor(() => expect(detail.querySelector(`a[href="/acme/workforce/people/${accessOwnerId}"]`)?.textContent)
+      .toBe('Blair Chen'));
+    expect(api.bodies.slice(readsBeforeDetail)).toEqual(expect.arrayContaining([
+      { method: 'GET', path: savedPath, body: undefined },
+      { method: 'GET', path: `${savedPath}/system-instances`, body: undefined },
+      { method: 'GET', path: `${base}/people`, body: undefined },
+    ]));
+    expect(detail.querySelector('h1')?.textContent).toBe('People Operations Portal');
+    expect(detail.textContent).toContain('Coordinates staff onboarding');
+    expect(detail.querySelector('.application-facts')?.textContent).toContain('confidential');
+    expect(detail.querySelector(`a[href="/acme/workforce/people/${systemOwnerId}"]`)?.textContent).toBe('Alex Rivera');
+    expect(detail.textContent).toContain(`Revision 1, last changed by Jordan Recorder on ${new Date(saved.last_changed_at).toLocaleDateString()}`);
+    await vi.waitFor(() => expect(detail.textContent).toContain('No reviewed systems yet.'));
+    for (const label of gapLabels) expect(detail.querySelector('.application-unresolved')?.textContent).toContain(label);
+    // No instance exists to scope, and saving the Application makes no scope decision.
+    expect(detail.querySelector('form[aria-label="Decide access-review scope"]')).toBeNull();
+    expect(detail.textContent).not.toContain('Included in access reviews');
+    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`))
+      .toEqual([`POST ${base}/applications`]);
+  });
+
   it('ShouldShowApplicationSystemsAndHistory', async () => {
     // Arrange
     detailAnswers();
