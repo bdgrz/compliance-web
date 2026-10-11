@@ -150,9 +150,18 @@ function answers(options: {
   decisions?: unknown[];
   impact?: unknown;
   retired?: boolean;
+  draftVersionId?: string | null;
+  status?: string;
 }) {
-  const openDraft = !options.approved || (options.impact as { kind?: string } | undefined)?.kind === 'successor';
-  const draftVersionId = options.approved && openDraft ? successorId : versionId;
+  const openDraft =
+    !options.approved ||
+    (options.impact as { kind?: string } | undefined)?.kind === 'successor';
+  const draftVersionId =
+    options.draftVersionId === undefined
+      ? options.approved && openDraft
+        ? successorId
+        : versionId
+      : options.draftVersionId;
   api.reply(`GET ${control}/draft`, 200, {
     tenant_id: tenantId,
     program_id: programId,
@@ -160,7 +169,7 @@ function answers(options: {
     draft_version_id: draftVersionId,
     identifier: 'AC-01',
     revision: options.revision,
-    status: 'draft',
+    status: options.status ?? 'draft',
     owner_resolution: 'declared_unverified',
     applicability_resolution: 'declared',
     content,
@@ -169,9 +178,12 @@ function answers(options: {
     last_changed_at: '2026-09-20T00:00:00Z',
   });
   api.reply(`GET ${control}/draft/owner-person`, 200, {
-    tenant_id: tenantId, program_id: programId, control_id: controlId,
+    tenant_id: tenantId,
+    program_id: programId,
+    control_id: controlId,
     draft_version_id: openDraft ? draftVersionId : null,
-    revision: options.revision, designation: null,
+    revision: options.revision,
+    designation: null,
   });
   api.reply(`GET ${base}/people`, 200, { items: [], next_cursor: null });
   api.reply(`GET ${control}/draft/revisions`, 200, {
@@ -251,7 +263,42 @@ function sent(method: string, path: string) {
     ?.body as Record<string, unknown> | undefined;
 }
 
+function openHandoff(
+  query = `review_revision=2&review_draft_version=${versionId}`
+) {
+  window.history.replaceState(
+    null,
+    '',
+    `/acme/programs/${programId}/controls/${controlId}?${query}`
+  );
+}
+
+function shareLink(container: HTMLElement) {
+  return [...container.querySelectorAll('a')].find((element) =>
+    element.textContent?.startsWith('Share revision ')
+  );
+}
+
+function holdRead(path: string) {
+  const fetch = globalThis.fetch;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input as Request;
+      if (request.method === 'GET' && new URL(request.url).pathname === path)
+        await held;
+      return fetch(input, init);
+    }
+  );
+  return release;
+}
+
 beforeEach(async () => {
+  window.history.replaceState(null, '', '/');
   clearActiveTenant();
   api = stubApi();
   api.reply('/api/v1/tenant-slugs/acme/mine', 200, {
@@ -276,6 +323,407 @@ afterEach(() => {
 });
 
 describe('control review and lifecycle (R1-05 frontend b #480)', () => {
+  it('ShouldShareTheExactDraftRevisionGivenAnOpenDraft', async () => {
+    // Arrange
+    answers({ revision: 2, approved: false });
+    window.history.replaceState(
+      null,
+      '',
+      '/old-slug/ignored?extra=private#old'
+    );
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(form(container, 'Review draft')).not.toBeNull()
+    );
+
+    // Assert
+    const link = [...container.querySelectorAll('a')].find(
+      (element) => element.textContent === 'Share revision 2 for review'
+    );
+    expect(link).toBeDefined();
+    expect(link?.href).toBe(
+      `${window.location.origin}/acme/programs/${programId}/controls/${controlId}?review_revision=2&review_draft_version=${versionId}#control-review-heading`
+    );
+    expect(api.bodies.filter((request) => request.method !== 'GET')).toEqual(
+      []
+    );
+    expect(container.textContent).toContain('reviewer who already has access');
+    expect(container.textContent).toContain(
+      'After editing the draft, share a new link'
+    );
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it.each(['accept', 'request_changes'] as const)(
+    'ShouldRecordTheExactRevisionGivenAMatchingHandoffAndOutcome_%s',
+    async (outcome) => {
+      // Arrange
+      answers({ revision: 2, approved: false });
+      openHandoff();
+      api.reply(`POST ${control}/draft/reviews`, 204);
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(form(container, 'Review draft')).not.toBeNull()
+      );
+      const review = form(container, 'Review draft');
+      if (outcome === 'request_changes')
+        (
+          review.querySelectorAll('input[type="radio"]')[1] as HTMLInputElement
+        ).click();
+      type(field(review, 'Rationale'), 'Review of the shared draft.');
+
+      // Act
+      submit(review);
+      await vi.waitFor(() =>
+        expect(sent('POST', `${control}/draft/reviews`)).toBeDefined()
+      );
+
+      // Assert
+      expect(sent('POST', `${control}/draft/reviews`)).toEqual({
+        expected_revision: 2,
+        outcome,
+        rationale: 'Review of the shared draft.',
+      });
+      await vi.waitFor(() =>
+        expect(container.textContent).toContain(
+          'This link is for revision 2 of this draft.'
+        )
+      );
+    }
+  );
+
+  it.each([
+    ['missing revision', `review_draft_version=${versionId}`],
+    ['missing version', 'review_revision=2'],
+    ['empty revision', `review_revision=&review_draft_version=${versionId}`],
+    ['empty version', 'review_revision=2&review_draft_version='],
+    [
+      'fractional revision',
+      `review_revision=2.5&review_draft_version=${versionId}`,
+    ],
+    [
+      'exponent revision',
+      `review_revision=2e0&review_draft_version=${versionId}`,
+    ],
+    ['zero revision', `review_revision=0&review_draft_version=${versionId}`],
+    [
+      'negative revision',
+      `review_revision=-2&review_draft_version=${versionId}`,
+    ],
+    [
+      'unsafe revision',
+      `review_revision=9007199254740992&review_draft_version=${versionId}`,
+    ],
+    ['malformed version', 'review_revision=2&review_draft_version=invalid'],
+    [
+      'duplicate revision',
+      `review_revision=2&review_revision=2&review_draft_version=${versionId}`,
+    ],
+    [
+      'duplicate version',
+      `review_revision=2&review_draft_version=${versionId}&review_draft_version=${versionId}`,
+    ],
+    ['changed revision', `review_revision=1&review_draft_version=${versionId}`],
+    [
+      'changed version',
+      `review_revision=2&review_draft_version=${successorId}`,
+    ],
+  ])('ShouldRefuseReviewGivenAHandoffWith_%s', async (_reason, query) => {
+    // Arrange
+    answers({ revision: 2, approved: false });
+    openHandoff(query);
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain('Ask the author for a new link.')
+    );
+
+    // Assert
+    expect(form(container, 'Review draft')).toBeNull();
+    expect(shareLink(container)).toBeUndefined();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'This review link'
+    );
+    expect(sent('POST', `${control}/draft/reviews`)).toBeUndefined();
+  });
+
+  it.each([
+    ['approved', { approved: true }],
+    ['retired', { approved: true, retired: true }],
+    ['closed', { status: 'approved' }],
+    ['missing identity', { draftVersionId: null }],
+    ['unsafe revision', { revision: 9007199254740992 }],
+  ])('ShouldRefuseHandoffGivenTheDraftIs_%s', async (_reason, options) => {
+    // Arrange
+    answers({ revision: 2, approved: false, ...options });
+    openHandoff();
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain(
+        'This draft is no longer available for review.'
+      )
+    );
+
+    // Assert
+    expect(form(container, 'Review draft')).toBeNull();
+    expect(shareLink(container)).toBeUndefined();
+    expect(sent('POST', `${control}/draft/reviews`)).toBeUndefined();
+  });
+
+  it.each(['draft', 'decisions'])(
+    'ShouldRefuseHandoffGivenTheRequiredReadIsPending_%s',
+    async (read) => {
+      // Arrange
+      answers({ revision: 2, approved: false });
+      openHandoff();
+      const release = holdRead(`${control}/${read}`);
+
+      // Act
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector(
+            `[aria-label="${read === 'draft' ? 'Loading control' : 'Loading approval status'}"]`
+          )
+        ).not.toBeNull()
+      );
+
+      // Assert
+      expect(form(container, 'Review draft')).toBeNull();
+      expect(shareLink(container)).toBeUndefined();
+      expect(sent('POST', `${control}/draft/reviews`)).toBeUndefined();
+      release();
+      await vi.waitFor(() =>
+        expect(form(container, 'Review draft')).not.toBeNull()
+      );
+    }
+  );
+
+  it.each(['draft', 'decisions'])(
+    'ShouldRefuseHandoffGivenTheRequiredRefreshIsPendingThenFailed_%s',
+    async (read) => {
+      // Arrange
+      answers({ revision: 2, approved: false });
+      openHandoff();
+      api.reply(`POST ${control}/draft/reviews`, 204);
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(form(container, 'Review draft')).not.toBeNull()
+      );
+      const review = form(container, 'Review draft');
+      type(field(review, 'Rationale'), 'Ready for review.');
+      const release = holdRead(`${control}/${read}`);
+      api.reply(
+        `GET ${control}/${read}`,
+        503,
+        problem(503, 'Refresh unavailable.')
+      );
+
+      // Act
+      submit(review);
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector('[aria-label="Loading approval status"]')
+        ).not.toBeNull()
+      );
+
+      // Assert: stale cached reads cannot leave a usable review or share link.
+      expect(
+        (
+          form(container, 'Review draft').querySelector(
+            'button[type="submit"]'
+          ) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      submit(form(container, 'Review draft'));
+      expect(shareLink(container)).toBeUndefined();
+      release();
+      await vi.waitFor(() =>
+        expect(container.textContent).toContain(
+          read === 'draft'
+            ? 'Unable to load this control.'
+            : 'Unable to load the control decisions.'
+        )
+      );
+      expect(form(container, 'Review draft')).toBeNull();
+      expect(shareLink(container)).toBeUndefined();
+      expect(
+        api.bodies.filter((request) => request.method === 'POST')
+      ).toHaveLength(1);
+    }
+  );
+
+  it.each([
+    [
+      'stale',
+      409,
+      'The control draft changed. Current revision: 3. Reload it and retry.',
+      'Someone else changed this control',
+    ],
+    [
+      'permission',
+      403,
+      'Review denied.',
+      'You do not have permission to review this control.',
+    ],
+    ['network', 0, '', 'Unable to review this control.'],
+  ])(
+    'ShouldPreserveRationaleWithoutRetryGivenAReviewFailure_%s',
+    async (_reason, status, detail, message) => {
+      // Arrange
+      answers({ revision: 2, approved: false });
+      openHandoff();
+      api.reply(
+        `POST ${control}/draft/reviews`,
+        Number(status),
+        problem(Number(status), String(detail))
+      );
+      let writes = 0;
+      const fetch = globalThis.fetch;
+      vi.stubGlobal(
+        'fetch',
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if ((input as Request).method === 'POST') {
+            writes++;
+            if (status === 0) throw new TypeError('Network unavailable.');
+          }
+          return fetch(input, init);
+        }
+      );
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(form(container, 'Review draft')).not.toBeNull()
+      );
+      const review = form(container, 'Review draft');
+      type(field(review, 'Rationale'), 'Keep this rationale.');
+
+      // Act
+      submit(review);
+      await vi.waitFor(() =>
+        expect(review.querySelector('[role="alert"]')?.textContent).toContain(
+          String(message)
+        )
+      );
+
+      // Assert
+      expect(field(review, 'Rationale').value).toBe('Keep this rationale.');
+      expect(review.querySelector('[role="status"]')).toBeNull();
+      expect(writes).toBe(1);
+      expect(
+        (review.querySelector('button[type="submit"]') as HTMLButtonElement)
+          .disabled
+      ).toBe(false);
+    }
+  );
+
+  it('ShouldRefreshServerAttributionAndKeepTheReviewOnItsRevisionGivenAnEdit', async () => {
+    // Arrange
+    answers({ revision: 2, approved: false });
+    openHandoff();
+    api.reply(`POST ${control}/draft/reviews`, 204);
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(form(container, 'Review draft')).not.toBeNull()
+    );
+    const review = form(container, 'Review draft');
+    type(field(review, 'Rationale'), 'Submitted rationale.');
+    const stored = {
+      ...decision('accept', 2, versionId, '2026-10-01T12:00:00Z'),
+      actor: {
+        kind: 'member',
+        id: 'server-member',
+        display: 'Morgan Server Reviewer',
+      },
+      rationale: 'Server-recorded rationale.',
+    };
+    api.reply(`GET ${control}/decisions`, 200, {
+      items: [stored],
+      next_cursor: null,
+    });
+    const decisionReads = api.requested.filter(
+      (path) => path === `${control}/decisions`
+    ).length;
+
+    // Act
+    submit(review);
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('.control-decisions')?.textContent
+      ).toContain('Morgan Server Reviewer')
+    );
+
+    // Assert: the review refreshes even though the content revision stays 2.
+    expect(
+      api.requested.filter((path) => path === `${control}/decisions`).length
+    ).toBeGreaterThan(decisionReads);
+    const attribution =
+      container.querySelector('.control-decisions')?.textContent;
+    expect(attribution).toContain('review: accept');
+    expect(attribution).toContain('on revision 2 by Morgan Server Reviewer');
+    expect(attribution).toContain(
+      new Date(stored.decided_at).toLocaleDateString()
+    );
+    expect(attribution).toContain('Server-recorded rationale.');
+    expect(attribution).not.toContain('Submitted rationale.');
+
+    // Act: the author reopens after the content advances.
+    while (mounted.length > 0) mounted.pop()?.cleanup();
+    window.history.replaceState(
+      null,
+      '',
+      `/acme/programs/${programId}/controls/${controlId}`
+    );
+    answers({ revision: 3, approved: false, decisions: [stored] });
+    const reopened = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        reopened.querySelector('.control-decisions')?.textContent
+      ).toContain('Morgan Server Reviewer')
+    );
+
+    // Assert
+    expect(reopened.querySelector('.control-decisions')?.textContent).toBe(
+      attribution
+    );
+    expect(reopened.textContent).toContain(
+      'needs the latest review of revision 3 to accept it first'
+    );
+    expect(
+      (
+        form(reopened, 'Approve control').querySelector(
+          'button[type="submit"]'
+        ) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    const newLink = new URL(shareLink(reopened)!.href);
+    expect(newLink.searchParams.get('review_revision')).toBe('3');
+    expect(newLink.searchParams.get('review_draft_version')).toBe(versionId);
+    expect(await accessibilityViolations(reopened)).toEqual([]);
+  });
+
   it('ShouldRecordARequestForChangesAgainstTheExactRevision', async () => {
     // Arrange
     answers({ revision: 2, approved: false });
