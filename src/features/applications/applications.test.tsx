@@ -38,7 +38,9 @@ function applicationBody(revision = 2, extra: Record<string, unknown> = {}) {
     source_kind: 'manual',
     source_identifier: 'manual',
     has_system_instances: true,
-    unresolved: ['owner_missing', 'classification_unresolved'],
+    unresolved: ['owner_missing', 'classification_unresolved', 'system_owner_missing', 'access_owner_missing', 'application_kind_missing', 'criticality_missing', 'scope_boundary_review_pending'],
+    application_kind: null,
+    criticality: null,
     last_changed_by_member_id: 'm',
     last_changed_by_display: 'Casey Lead',
     last_changed_at: '2026-09-20T00:00:00Z',
@@ -133,6 +135,83 @@ function typeInto(container: HTMLElement, label: string, value: string) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+const personId = '0190a1b2-0000-7000-8000-0000000000f1';
+const draft = {
+  'Application name': ' Payroll ',
+  Purpose: ' Runs payroll ',
+  Owner: ' Finance ',
+  'Data classification': ' confidential ',
+  'Application kind': ' business system ',
+  Criticality: ' important ',
+  'System owner': personId,
+  'Access owner': personId,
+};
+
+function field(
+  container: Element,
+  label: string
+): HTMLInputElement | HTMLSelectElement {
+  return [...container.querySelectorAll('label')]
+    .find((element) => element.textContent?.startsWith(label))!
+    .querySelector('input, select')!;
+}
+
+function setField(container: Element, label: string, value: string) {
+  const element = field(container, label);
+  element.value = value;
+  element.dispatchEvent(
+    new Event(element instanceof HTMLSelectElement ? 'change' : 'input', {
+      bubbles: true,
+    })
+  );
+}
+
+async function completeDeclaration() {
+  api.reply(`GET ${base}/applications`, 200, { items: [], next_cursor: null });
+  api.reply(`GET ${base}/people`, 200, {
+    items: [
+      {
+        tenant_id: tenantId,
+        person_id: personId,
+        revision: 1,
+        display_name: 'Alex Rivera',
+        work_email: null,
+        source_kind: 'manual',
+        last_changed_by: { kind: 'member', id: 'm', display: 'Casey Lead' },
+        last_changed_at: '2026-10-11T12:00:00Z',
+      },
+    ],
+    next_cursor: null,
+  });
+  const container = mount(ApplicationsPage);
+  await vi.waitFor(() =>
+    expect(
+      field(container, 'System owner').querySelectorAll('option')
+    ).toHaveLength(2)
+  );
+  for (const [label, value] of Object.entries(draft))
+    setField(container, label, value);
+  return container;
+}
+
+function submitDeclaration(container: HTMLElement) {
+  container
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+}
+
+function expectDraft(container: Element, changes: Record<string, string> = {}) {
+  for (const [label, value] of Object.entries({ ...draft, ...changes }))
+    expect(field(container, label).value).toBe(value);
+}
+
+function declarationPosts() {
+  return api.bodies.filter(
+    (request) =>
+      request.method === 'POST' && request.path === `${base}/applications`
+  );
+}
+
 beforeEach(async () => {
   clearActiveTenant();
   api = stubApi();
@@ -201,23 +280,524 @@ describe('applications and reviewed systems (R1-10a frontend #212)', () => {
 
   it('ShouldDeclareAnApplicationWithOwnersAndClassification', async () => {
     // Arrange
-    api.reply(`${base}/applications`, 200, { items: [], next_cursor: null });
-    api.reply(`POST ${base}/applications`, 400, problem(400, 'The name is required.'));
-    const container = mount(ApplicationsPage);
-    await vi.waitFor(() => expect(container.querySelector('form')).not.toBeNull());
+    api.reply(
+      `POST ${base}/applications`,
+      400,
+      problem(400, 'The name is required.')
+    );
+    const container = await completeDeclaration();
     typeInto(container, 'Application name', ' Payroll ');
     typeInto(container, 'Purpose', 'Runs payroll');
     typeInto(container, 'Data classification', 'confidential');
 
     // Act
-    container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    container
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')).not.toBeNull()
+    );
 
     // Assert
-    const sent = api.bodies.find((b) => b.method === 'POST' && b.path === `${base}/applications`)?.body as Record<string, unknown>;
-    expect(sent).toEqual({ name: 'Payroll', purpose: 'Runs payroll', owner_reference: null, classification: 'confidential' });
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('The name is required.');
+    const sent = api.bodies.find(
+      (b) => b.method === 'POST' && b.path === `${base}/applications`
+    )?.body as Record<string, unknown>;
+    expect(sent).toEqual({
+      name: 'Payroll',
+      purpose: 'Runs payroll',
+      owner_reference: 'Finance',
+      classification: 'confidential',
+      application_kind: 'business system',
+      criticality: 'important',
+      system_owner_person_id: personId,
+      access_owner_person_id: personId,
+      declaration_key: expect.any(String),
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      'The name is required.'
+    );
   });
+
+  it.each([
+    ...[
+      'Application name',
+      'Purpose',
+      'Data classification',
+      'Application kind',
+      'Criticality',
+    ].flatMap((label) => ['', '   '].map((value) => ({ label, value }))),
+    { label: 'System owner', value: '' },
+    { label: 'Access owner', value: '' },
+  ])(
+    'ShouldRetainDraftWithoutDispatchGivenRequired$labelIsBlank$value',
+    async ({ label, value }) => {
+      // Arrange
+      const assign = vi.fn();
+      vi.stubGlobal('window', { location: { assign } });
+      const container = await completeDeclaration();
+      setField(container, label, value);
+
+      // Act: dispatch directly so native form validation cannot hide a missing guard.
+      submitDeclaration(container);
+
+      // Assert
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector('[role="alert"]')?.textContent?.toLowerCase()
+        ).toContain(label.toLowerCase())
+      );
+      expect(declarationPosts()).toEqual([]);
+      expect(assign).not.toHaveBeenCalled();
+      expectDraft(container, { [label]: value });
+    }
+  );
+
+  it.each([
+    ['Application name', 200],
+    ['Data classification', 200],
+    ['Application kind', 200],
+    ['Criticality', 200],
+    ['Purpose', 2000],
+    ['Owner', 2000],
+  ] as const)(
+    'ShouldRetainDraftWithoutDispatchGiven%sExceedsItsBound',
+    async (label, limit) => {
+      // Arrange
+      const container = await completeDeclaration();
+      const value = 'x'.repeat(limit + 1);
+      setField(container, label, value);
+
+      // Act
+      submitDeclaration(container);
+
+      // Assert
+      await vi.waitFor(() =>
+        expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+          `${label} must be ${limit} characters or fewer.`
+        )
+      );
+      expect(declarationPosts()).toEqual([]);
+      expectDraft(container, { [label]: value });
+    }
+  );
+
+  it.each([
+    {
+      status: 400,
+      detail: 'The classification is invalid.',
+      transient: false,
+      message: 'The classification is invalid.',
+    },
+    {
+      status: 403,
+      detail: 'Internal permission detail',
+      transient: false,
+      message: 'You do not have permission to record the application.',
+    },
+    {
+      status: 409,
+      detail: 'The application already exists.',
+      transient: false,
+      message: 'The application already exists.',
+    },
+    {
+      status: 409,
+      detail: 'Projection behind',
+      transient: true,
+      message:
+        'The latest changes are still being processed. Try again in a moment.',
+    },
+  ])(
+    'ShouldRetainCompleteDraftGivenRefusedDeclaration$statusTransient$transient',
+    async ({ status, detail, transient, message }) => {
+      // Arrange
+      const assign = vi.fn();
+      vi.stubGlobal('window', { location: { assign } });
+      const container = await completeDeclaration();
+      api.reply(
+        `POST ${base}/applications`,
+        status,
+        problem(status, detail, transient)
+      );
+
+      // Act
+      submitDeclaration(container);
+
+      // Assert
+      await vi.waitFor(() =>
+        expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+          message
+        )
+      );
+      expect(declarationPosts()).toHaveLength(1);
+      expectDraft(container);
+      expect(assign).not.toHaveBeenCalled();
+    }
+  );
+
+  it('ShouldReuseDeclarationIdentityGivenCommittedButLostResponseAndIdenticalRetry', async () => {
+    // Arrange: the transport receives a successful server answer, then loses it before the client sees it.
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    const container = await completeDeclaration();
+    const savedId = '0190a1b2-0000-7000-8000-0000000000a9';
+    api.reply(`POST ${base}/applications`, 200, { application_id: savedId });
+    const transport = globalThis.fetch;
+    let loseFirstAnswer = true;
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await transport(input, init);
+        if (
+          input instanceof Request &&
+          input.method === 'POST' &&
+          loseFirstAnswer
+        ) {
+          loseFirstAnswer = false;
+          throw new TypeError('The connection was lost after commit.');
+        }
+        return response;
+      }
+    );
+
+    // Act
+    submitDeclaration(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        'Unable to record the application.'
+      )
+    );
+    expectDraft(container);
+    expect(assign).not.toHaveBeenCalled();
+    submitDeclaration(container);
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`/acme/applications/${savedId}`)
+    );
+
+    // Assert: this proves client key/payload reuse, while backend #958 proves deduplication without append.
+    const posts = declarationPosts();
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toEqual(posts[0]);
+    expect(posts[0].body).toMatchObject({
+      declaration_key: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      ),
+      system_owner_person_id: personId,
+      access_owner_person_id: personId,
+    });
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
+
+  it('ShouldKeepDeclarationIdentityAndChangedDraftGivenContentCollisionAfterUncertainSave', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    const container = await completeDeclaration();
+    const transport = globalThis.fetch;
+    let loseFirstAnswer = true;
+    api.reply(`POST ${base}/applications`, 200, {
+      application_id: applicationId,
+    });
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await transport(input, init);
+        if (
+          input instanceof Request &&
+          input.method === 'POST' &&
+          loseFirstAnswer
+        ) {
+          loseFirstAnswer = false;
+          throw new TypeError('Lost response');
+        }
+        return response;
+      }
+    );
+    submitDeclaration(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')).not.toBeNull()
+    );
+    const detail =
+      'The declaration key has already been used for different application content.';
+    api.reply(`POST ${base}/applications`, 409, problem(409, detail));
+    setField(container, 'Criticality', ' changed criticality ');
+
+    // Act
+    submitDeclaration(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        detail
+      )
+    );
+    submitDeclaration(container);
+    await vi.waitFor(() => expect(declarationPosts()).toHaveLength(3));
+
+    // Assert
+    const bodies = declarationPosts().map(
+      (post) => post.body as Record<string, unknown>
+    );
+    expect(new Set(bodies.map((body) => body.declaration_key)).size).toBe(1);
+    expect(bodies[1].criticality).toBe('changed criticality');
+    expect(bodies[2]).toEqual(bodies[1]);
+    expectDraft(container, { Criticality: ' changed criticality ' });
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('ShouldSuppressDuplicateDeclarationGivenSubmissionPending', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    const container = await completeDeclaration();
+    api.reply(`POST ${base}/applications`, 200, {
+      application_id: applicationId,
+    });
+    const transport = globalThis.fetch;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await transport(input, init);
+        if (input instanceof Request && input.method === 'POST') await pending;
+        return response;
+      }
+    );
+
+    // Act
+    submitDeclaration(container);
+    submitDeclaration(container);
+    await vi.waitFor(() => expect(declarationPosts()).toHaveLength(1));
+    submitDeclaration(container);
+    release();
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+
+    // Assert
+    expect(declarationPosts()).toHaveLength(1);
+  });
+
+  it('ShouldAvoidNavigationGivenTenantClearsWhileDeclarationIsPending', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    const container = await completeDeclaration();
+    api.reply(`POST ${base}/applications`, 200, {
+      application_id: applicationId,
+    });
+    const transport = globalThis.fetch;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await transport(input, init);
+        if (input instanceof Request && input.method === 'POST') await pending;
+        return response;
+      }
+    );
+
+    // Act
+    submitDeclaration(container);
+    await vi.waitFor(() => expect(declarationPosts()).toHaveLength(1));
+    clearActiveTenant();
+    release();
+
+    // Assert
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        'Return to the original organization to reopen this application.'
+      )
+    );
+    expectDraft(container);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it.each(['cleared', 'different'] as const)(
+    'ShouldKeepDraftInOriginalTenantGivenContextIs%s',
+    async (context) => {
+      // Arrange
+      const assign = vi.fn();
+      vi.stubGlobal('window', { location: { assign } });
+      const container = await completeDeclaration();
+      api.reply(
+        `POST ${base}/applications`,
+        409,
+        problem(409, 'Try the same declaration again.')
+      );
+      submitDeclaration(container);
+      await vi.waitFor(() =>
+        expect(container.querySelector('[role="alert"]')).not.toBeNull()
+      );
+      clearActiveTenant();
+      if (context === 'different') {
+        const otherId = '0190a1b2-0000-7000-8000-000000000002';
+        api.reply('/api/v1/tenant-slugs/other/mine', 200, {
+          tenant_id: otherId,
+          current_slug: 'other',
+          redirect: false,
+        });
+        api.reply('/api/v1/tenants/mine', 200, {
+          items: [{ tenant_id: otherId, name: 'Other Corp', slug: 'other' }],
+          next_cursor: null,
+        });
+        await resolveTenantRoute('other', {
+          pathname: '/other/applications',
+          search: '',
+          hash: '',
+        });
+      }
+
+      // Act
+      submitDeclaration(container);
+
+      // Assert
+      await vi.waitFor(() =>
+        expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+          'Return to the original organization to record this application.'
+        )
+      );
+      expect(
+        api.bodies.filter((request) => request.method === 'POST')
+      ).toHaveLength(1);
+      expectDraft(container);
+      expect(assign).not.toHaveBeenCalled();
+    }
+  );
+
+  it('ShouldRejectFabricatedOwnerGivenUnavailableRoster', async () => {
+    // Arrange
+    api.reply(`GET ${base}/applications`, 200, {
+      items: [],
+      next_cursor: null,
+    });
+    api.reply(`GET ${base}/people`, 503, problem(503, 'Roster unavailable'));
+    const container = mount(ApplicationsPage);
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain(
+        'The workforce roster could not be loaded'
+      )
+    );
+    for (const [label, value] of Object.entries(draft).filter(
+      ([label]) => !label.endsWith('owner')
+    ))
+      setField(container, label, value);
+    const owner = field(container, 'System owner') as HTMLSelectElement;
+    const fabricated = document.createElement('option');
+    fabricated.value = personId;
+    owner.append(fabricated);
+    setField(container, 'System owner', personId);
+
+    // Act
+    submitDeclaration(container);
+
+    // Assert
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        'Choose a system owner from the workforce roster.'
+      )
+    );
+    expect(declarationPosts()).toEqual([]);
+    expect(owner.disabled).toBe(true);
+  });
+
+  it.each(['omitted', 'null'] as const)(
+    'ShouldShowSnapshotFactsAndActualGapsGivenLegacyAdditionsAre%s',
+    async (shape) => {
+      // Arrange
+      const current = applicationBody(3, {
+        lifecycle: 'retired',
+        has_system_instances: false,
+        unresolved: [
+          'classification_unresolved',
+          'system_owner_missing',
+          'access_owner_missing',
+          'application_kind_missing',
+          'criticality_missing',
+          'system_instances_missing',
+        ],
+      });
+      if (shape === 'omitted') {
+        delete (current as Record<string, unknown>).application_kind;
+        delete (current as Record<string, unknown>).criticality;
+      }
+      api.reply(`GET ${base}/applications`, 200, {
+        items: [current],
+        next_cursor: null,
+      });
+      const inventory = mount(ApplicationsPage);
+      await vi.waitFor(() =>
+        expect(
+          inventory.querySelector('.application-list')?.textContent
+        ).toContain('Application kind missing')
+      );
+      expect(
+        inventory.querySelector('.application-list')?.textContent
+      ).toContain('Criticality missing');
+      expect(
+        inventory.querySelector('.application-list')?.textContent
+      ).toContain('Lifecycle: retired');
+      mounted.pop()!.cleanup();
+      api.reply(`GET ${app}`, 200, current);
+      api.reply(`GET ${base}/people`, 200, { items: [], next_cursor: null });
+      api.reply(`GET ${app}/system-instances`, 200, {
+        items: [],
+        next_cursor: null,
+      });
+      api.reply(`GET ${app}/revisions`, 200, {
+        items: [
+          {
+            ...current,
+            revision: 1,
+            lifecycle: 'active',
+            source_identifier: 'original source',
+            unresolved: [
+              'owner_missing',
+              'application_kind_missing',
+              'criticality_missing',
+              'scope_boundary_review_pending',
+            ],
+            change_kind: 'declared',
+            system_instance: null,
+            system_instance_id: null,
+          },
+        ],
+        next_cursor: null,
+      });
+
+      // Act
+      const container = mount(() => (
+        <ApplicationDetailPage applicationId={applicationId} />
+      ));
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector('.application-history')?.textContent
+        ).toContain('original source')
+      );
+
+      // Assert
+      const facts = container.querySelector('.application-facts')!;
+      const history = container.querySelector('.application-history')!;
+      expect(facts.textContent).toContain('Application kind missing');
+      expect(facts.textContent).toContain('Criticality missing');
+      expect(facts.textContent).toContain('retired');
+      expect(history.textContent).toContain('active');
+      expect(history.textContent).not.toContain('retired');
+      expect(history.textContent).toContain('Application kind missing');
+      expect(history.textContent).toContain('Criticality missing');
+      expect(history.textContent).toContain('Owner missing');
+      expect(history.textContent).not.toContain('Classification unresolved');
+      for (const gap of current.unresolved)
+        expect(
+          container.querySelector('.application-unresolved')?.textContent
+        ).toContain(
+          gap.replaceAll('_', ' ').replace(/^./, (first) => first.toUpperCase())
+        );
+      expect(container.textContent).not.toContain('draft state');
+    }
+  );
 
   it('ShouldReopenPopulatedManualApplicationGivenSuccessfulSaveAndFreshMount', async () => {
     // Arrange
@@ -241,94 +821,291 @@ describe('applications and reviewed systems (R1-10a frontend #212)', () => {
     const assign = vi.fn();
     // Capture navigation intent; this unit test does not execute browser navigation.
     vi.stubGlobal('window', { location: { assign } });
-    api.reply(`GET ${base}/applications`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${base}/applications`, 200, {
+      items: [],
+      next_cursor: null,
+    });
     api.reply(`GET ${base}/people`, 200, { items: people, next_cursor: null });
     api.reply(`POST ${base}/applications`, 200, { application_id: savedId });
     const container = mount(ApplicationsPage);
-    await vi.waitFor(() => expect(container.querySelectorAll('select option')).toHaveLength(6));
+    await vi.waitFor(() =>
+      expect(container.querySelectorAll('select option')).toHaveLength(6)
+    );
     typeInto(container, 'Application name', ' People Operations Portal ');
     typeInto(container, 'Purpose', ' Coordinates staff onboarding ');
     typeInto(container, 'Owner', ' People Operations ');
     typeInto(container, 'Data classification', ' confidential ');
-    for (const [label, personId] of [['System owner', systemOwnerId], ['Access owner', accessOwnerId]]) {
-      const select = [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label))!
+    expect(
+      [...container.querySelectorAll('label')].some(
+        (label) =>
+          label.textContent?.startsWith('Application kind') &&
+          label.querySelector('input') !== null
+      )
+    ).toBe(true);
+    expect(
+      [...container.querySelectorAll('label')].some(
+        (label) =>
+          label.textContent?.startsWith('Criticality') &&
+          label.querySelector('input') !== null
+      )
+    ).toBe(true);
+    typeInto(container, 'Application kind', ' staff portal ');
+    typeInto(container, 'Criticality', ' business critical ');
+    for (const [label, personId] of [
+      ['System owner', systemOwnerId],
+      ['Access owner', accessOwnerId],
+    ]) {
+      const select = [...container.querySelectorAll('label')]
+        .find((l) => l.textContent?.startsWith(label))!
         .querySelector('select')!;
       select.value = personId;
       select.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Act
-    container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(`/acme/applications/${savedId}`));
+    container
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`/acme/applications/${savedId}`)
+    );
 
     // Assert
     expect(assign).toHaveBeenCalledTimes(1);
-    expect(api.bodies.filter((request) => request.method === 'POST')).toEqual([{
-      method: 'POST',
-      path: `${base}/applications`,
-      body: {
-        name: 'People Operations Portal',
-        purpose: 'Coordinates staff onboarding',
-        owner_reference: 'People Operations',
-        classification: 'confidential',
-        system_owner_person_id: systemOwnerId,
-        access_owner_person_id: accessOwnerId,
+    expect(api.bodies.filter((request) => request.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: `${base}/applications`,
+        body: {
+          name: 'People Operations Portal',
+          purpose: 'Coordinates staff onboarding',
+          owner_reference: 'People Operations',
+          classification: 'confidential',
+          application_kind: 'staff portal',
+          criticality: 'business critical',
+          declaration_key: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+          ),
+          system_owner_person_id: systemOwnerId,
+          access_owner_person_id: accessOwnerId,
+        },
       },
-    }]);
+    ]);
 
     // Dispose the draft. Reopened values must come from new server reads.
     mounted.pop()!.cleanup();
-    const saved = applicationBody(1, {
+    const saved = applicationBody(2, {
       application_id: savedId,
       name: 'People Operations Portal',
       purpose: 'Coordinates staff onboarding',
       owner_reference: 'People Operations',
       classification: 'confidential',
+      application_kind: 'staff portal',
+      criticality: 'business critical',
       system_owner_person_id: systemOwnerId,
       access_owner_person_id: accessOwnerId,
       has_system_instances: false,
-      unresolved: ['owner_unverified', 'classification_unverified', 'system_instances_missing'],
+      unresolved: [
+        'owner_unverified',
+        'classification_unverified',
+        'system_instances_missing',
+      ],
       last_changed_by_member_id: 'recorder',
       last_changed_by_display: 'Jordan Recorder',
       last_changed_at: '2026-10-11T14:30:00Z',
     });
-    const gapLabels = ['Owner not verified', 'Classification not verified', 'System instances missing'];
-    api.reply(`GET ${base}/applications`, 200, { items: [saved], next_cursor: null });
+    const gapLabels = [
+      'Owner not verified',
+      'Classification not verified',
+      'System instances missing',
+    ];
+    api.reply(`GET ${base}/applications`, 200, {
+      items: [saved],
+      next_cursor: null,
+    });
     const readsBeforeInventory = api.bodies.length;
     const inventory = mount(ApplicationsPage);
-    await vi.waitFor(() => expect(inventory.querySelector(`a[href="/acme/applications/${savedId}"]`)?.textContent)
-      .toBe('People Operations Portal'));
-    expect(api.bodies.slice(readsBeforeInventory)).toContainEqual({ method: 'GET', path: `${base}/applications`, body: undefined });
-    expect(inventory.querySelector('.application-list')?.textContent).toContain('Coordinates staff onboarding');
-    expect(inventory.querySelector('.application-list')?.textContent).toContain('confidential');
-    expect(inventory.querySelector('.application-list')?.textContent).toContain('No reviewed systems yet');
-    for (const label of gapLabels) expect(inventory.querySelector('.application-unresolved')?.textContent).toContain(label);
+    await vi.waitFor(() =>
+      expect(
+        inventory.querySelector(`a[href="/acme/applications/${savedId}"]`)
+          ?.textContent
+      ).toBe('People Operations Portal')
+    );
+    expect(api.bodies.slice(readsBeforeInventory)).toContainEqual({
+      method: 'GET',
+      path: `${base}/applications`,
+      body: undefined,
+    });
+    expect(inventory.querySelector('.application-list')?.textContent).toContain(
+      'Coordinates staff onboarding'
+    );
+    expect(inventory.querySelector('.application-list')?.textContent).toContain(
+      'confidential'
+    );
+    for (const fact of [
+      'staff portal',
+      'business critical',
+      'Source: manual',
+      'Lifecycle: active',
+    ]) {
+      expect(
+        inventory.querySelector('.application-list')?.textContent
+      ).toContain(fact);
+    }
+    expect(inventory.querySelector('.application-list')?.textContent).toContain(
+      'No reviewed systems yet'
+    );
+    for (const label of gapLabels)
+      expect(
+        inventory.querySelector('.application-unresolved')?.textContent
+      ).toContain(label);
     mounted.pop()!.cleanup();
 
     api.reply(`GET ${savedPath}`, 200, saved);
-    api.reply(`GET ${savedPath}/system-instances`, 200, { items: [], next_cursor: null });
-    api.reply(`GET ${savedPath}/revisions`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${savedPath}/system-instances`, 200, {
+      items: [],
+      next_cursor: null,
+    });
+    const original = {
+      ...saved,
+      revision: 1,
+      application_kind: 'original portal',
+      criticality: 'important',
+      classification: 'internal',
+      lifecycle: 'active',
+      source_identifier: 'manual declaration',
+      change_kind: 'declared',
+      system_instance: null,
+      system_instance_id: null,
+      has_system_instances: true,
+      unresolved: [
+        'owner_unverified',
+        'classification_unverified',
+        'scope_boundary_review_pending',
+      ],
+      actor: {
+        kind: 'member',
+        id: 'original-recorder',
+        display: 'Original Recorder',
+      },
+    };
+    api.reply(`GET ${savedPath}/revisions`, 200, {
+      items: [
+        {
+          ...saved,
+          change_kind: 'revised',
+          system_instance: null,
+          system_instance_id: null,
+        },
+      ],
+      next_cursor: 'older',
+    });
+    const transport = globalThis.fetch;
+    const historyCursors: (string | null)[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+          'http://app.test'
+        );
+        if (url.pathname === `${savedPath}/revisions`) {
+          historyCursors.push(url.searchParams.get('cursor'));
+          if (url.searchParams.get('cursor') === 'older')
+            api.reply(`GET ${savedPath}/revisions`, 200, {
+              items: [original],
+              next_cursor: null,
+            });
+        }
+        return transport(input, init);
+      }
+    );
     const readsBeforeDetail = api.bodies.length;
-    const detail = mount(() => <ApplicationDetailPage applicationId={savedId} />);
-    await vi.waitFor(() => expect(detail.querySelector(`a[href="/acme/workforce/people/${accessOwnerId}"]`)?.textContent)
-      .toBe('Blair Chen'));
-    expect(api.bodies.slice(readsBeforeDetail)).toEqual(expect.arrayContaining([
-      { method: 'GET', path: savedPath, body: undefined },
-      { method: 'GET', path: `${savedPath}/system-instances`, body: undefined },
-      { method: 'GET', path: `${base}/people`, body: undefined },
-    ]));
-    expect(detail.querySelector('h1')?.textContent).toBe('People Operations Portal');
+    const detail = mount(() => (
+      <ApplicationDetailPage applicationId={savedId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        detail.querySelector(
+          `a[href="/acme/workforce/people/${accessOwnerId}"]`
+        )?.textContent
+      ).toBe('Blair Chen')
+    );
+    expect(api.bodies.slice(readsBeforeDetail)).toEqual(
+      expect.arrayContaining([
+        { method: 'GET', path: savedPath, body: undefined },
+        {
+          method: 'GET',
+          path: `${savedPath}/system-instances`,
+          body: undefined,
+        },
+        { method: 'GET', path: `${base}/people`, body: undefined },
+      ])
+    );
+    expect(detail.querySelector('h1')?.textContent).toBe(
+      'People Operations Portal'
+    );
     expect(detail.textContent).toContain('Coordinates staff onboarding');
-    expect(detail.querySelector('.application-facts')?.textContent).toContain('confidential');
-    expect(detail.querySelector(`a[href="/acme/workforce/people/${systemOwnerId}"]`)?.textContent).toBe('Alex Rivera');
-    expect(detail.textContent).toContain(`Revision 1, last changed by Jordan Recorder on ${new Date(saved.last_changed_at).toLocaleDateString()}`);
-    await vi.waitFor(() => expect(detail.textContent).toContain('No reviewed systems yet.'));
-    for (const label of gapLabels) expect(detail.querySelector('.application-unresolved')?.textContent).toContain(label);
+    expect(detail.querySelector('.application-facts')?.textContent).toContain(
+      'confidential'
+    );
+    for (const fact of [
+      'staff portal',
+      'business critical',
+      'Source',
+      'manual',
+      'Lifecycle',
+      'active',
+    ]) {
+      expect(detail.querySelector('.application-facts')?.textContent).toContain(
+        fact
+      );
+    }
+    await vi.waitFor(() =>
+      expect(
+        detail.querySelector('.application-history')?.textContent
+      ).toContain('original portal')
+    );
+    expect(historyCursors).toEqual([null, 'older']);
+    const history = detail.querySelector('.application-history')!;
+    for (const fact of [
+      'important',
+      'internal',
+      'Original Recorder',
+      'manual declaration',
+      'active',
+      'Scope boundary review pending',
+    ]) {
+      expect(history.textContent).toContain(fact);
+    }
+    expect(
+      history.querySelector(`a[href="/acme/workforce/people/${systemOwnerId}"]`)
+        ?.textContent
+    ).toBe('Alex Rivera');
+    expect(
+      detail.querySelector(`a[href="/acme/workforce/people/${systemOwnerId}"]`)
+        ?.textContent
+    ).toBe('Alex Rivera');
+    expect(detail.textContent).toContain(
+      `Revision 2, last changed by Jordan Recorder on ${new Date(saved.last_changed_at).toLocaleDateString()}`
+    );
+    await vi.waitFor(() =>
+      expect(detail.textContent).toContain('No reviewed systems yet.')
+    );
+    for (const label of gapLabels)
+      expect(
+        detail.querySelector('.application-unresolved')?.textContent
+      ).toContain(label);
     // No instance exists to scope, and saving the Application makes no scope decision.
-    expect(detail.querySelector('form[aria-label="Decide access-review scope"]')).toBeNull();
+    expect(
+      detail.querySelector('form[aria-label="Decide access-review scope"]')
+    ).toBeNull();
     expect(detail.textContent).not.toContain('Included in access reviews');
-    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`))
-      .toEqual([`POST ${base}/applications`]);
+    expect(
+      api.bodies
+        .filter((request) => request.method !== 'GET')
+        .map((request) => `${request.method} ${request.path}`)
+    ).toEqual([`POST ${base}/applications`]);
   });
 
   it('ShouldShowApplicationSystemsAndHistory', async () => {
@@ -336,13 +1113,21 @@ describe('applications and reviewed systems (R1-10a frontend #212)', () => {
     detailAnswers();
 
     // Act
-    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
-    await vi.waitFor(() => expect(container.querySelectorAll('.application-history li')).toHaveLength(2));
+    const container = mount(() => (
+      <ApplicationDetailPage applicationId={applicationId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        container.querySelectorAll('.application-history > li')
+      ).toHaveLength(2)
+    );
 
     // Assert
     expect(container.querySelector('h1')?.textContent).toBe('Payroll');
     expect(container.textContent).toContain('Payroll production');
-    expect(container.querySelector('.application-history li')?.textContent).toContain('Revision 2');
+    expect(
+      container.querySelector('.application-history li')?.textContent
+    ).toContain('Revision 2');
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
@@ -396,25 +1181,69 @@ describe('application change and retirement (R1-10d frontend #218)', () => {
     detailAnswers(2);
     api.reply(`POST ${app}/change-previews`, 200, preview('revise'));
     api.reply(`PUT ${app}`, 204);
-    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
-    await vi.waitFor(() => expect(container.querySelector('form[aria-label="Revise application"]')).not.toBeNull());
+    const container = mount(() => (
+      <ApplicationDetailPage applicationId={applicationId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('form[aria-label="Revise application"]')
+      ).not.toBeNull()
+    );
     typeInto(container, 'Owner', 'Finance');
 
     // Act
     submit(container, 'Revise application');
-    await vi.waitFor(() => expect(container.textContent).toContain('Change impact'));
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain('Change impact')
+    );
     expect(api.bodies.some((b) => b.method === 'PUT')).toBe(false);
     expect(container.textContent).toContain('Owner: not set → Finance');
     expect(container.textContent).toContain('Processes customer data.');
     expect(container.textContent).toContain('This preview is not complete');
-    [...container.querySelectorAll('button')].find((b) => b.textContent === 'Save revision')!.click();
-    await vi.waitFor(() => expect(api.bodies.some((b) => b.method === 'PUT')).toBe(true));
+    [...container.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Save revision')!
+      .click();
+    await vi.waitFor(() =>
+      expect(api.bodies.some((b) => b.method === 'PUT')).toBe(true)
+    );
 
     // Assert
-    const sent = api.bodies.find((b) => b.method === 'PUT')?.body as Record<string, unknown>;
+    const sent = api.bodies.find((b) => b.method === 'PUT')?.body as Record<
+      string,
+      unknown
+    >;
     expect(sent.expected_revision).toBe(2);
     expect(sent.owner_reference).toBe('Finance');
-    await vi.waitFor(() => expect(api.requested.filter((p) => p === app).length).toBeGreaterThan(1));
+    expect(sent).not.toHaveProperty('application_kind');
+    expect(sent).not.toHaveProperty('criticality');
+    expect(sent).not.toHaveProperty('declaration_key');
+    const previewBody = api.bodies.find(
+      (request) => request.path === `${app}/change-previews`
+    )!.body;
+    expect(previewBody).toEqual({
+      expected_application_revision: 2,
+      change_kind: 'revise',
+      name: 'Payroll',
+      purpose: 'Runs payroll',
+      owner_reference: 'Finance',
+      classification: null,
+    });
+    const revisionForm = container.querySelector(
+      'form[aria-label="Revise application"]'
+    )!;
+    expect(
+      [...revisionForm.querySelectorAll('label')].some(
+        (label) =>
+          label.textContent?.startsWith('Application kind') ||
+          label.textContent?.startsWith('Criticality')
+      )
+    ).toBe(false);
+    expect(field(revisionForm, 'Data classification').required).toBe(false);
+    expect(field(revisionForm, 'System owner').required).toBe(false);
+    expect(field(revisionForm, 'Access owner').required).toBe(false);
+    await vi.waitFor(() =>
+      expect(api.requested.filter((p) => p === app).length).toBeGreaterThan(1)
+    );
   });
 
   it('ShouldAskToReloadGivenAStaleRevisionConflict', async () => {

@@ -38,7 +38,9 @@ function applicationBody(id: string, name: string, extra: Record<string, unknown
     source_kind: 'manual',
     source_identifier: 'manual',
     has_system_instances: true,
-    unresolved: [],
+    unresolved: ['application_kind_missing', 'criticality_missing', 'scope_boundary_review_pending'],
+    application_kind: null,
+    criticality: null,
     last_changed_by_member_id: 'm',
     last_changed_by_display: 'Casey Lead',
     last_changed_at: '2026-09-20T00:00:00Z',
@@ -127,6 +129,8 @@ afterEach(() => {
 describe('application owners and merge-into (R1-10 frontend b #485)', () => {
   it('ShouldDeclareOwnersChosenFromTheWorkforceRoster', async () => {
     // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
     api.reply(`GET ${base}/applications`, 200, { items: [], next_cursor: null });
     api.reply(`GET ${base}/people`, 200, { items: [person(alexId, 'Alex Rivera'), person(blairId, 'Blair Chen')], next_cursor: null });
     api.reply(`POST ${base}/applications`, 200, { application_id: applicationId });
@@ -134,6 +138,9 @@ describe('application owners and merge-into (R1-10 frontend b #485)', () => {
     await vi.waitFor(() => expect(field(container, 'System owner').querySelectorAll('option')).toHaveLength(3));
     setField(container, 'Application name', 'Payroll');
     setField(container, 'Purpose', 'Runs payroll');
+    setField(container, 'Data classification', 'confidential');
+    setField(container, 'Application kind', 'business system');
+    setField(container, 'Criticality', 'important');
     setField(container, 'System owner', alexId);
     setField(container, 'Access owner', blairId);
 
