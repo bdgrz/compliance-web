@@ -132,12 +132,14 @@ export function ReviewForm({
   controlId,
   revision,
   subject,
+  disabled = false,
   onDecided,
 }: {
   programId: string;
   controlId: string;
   revision: number;
   subject: string;
+  disabled?: boolean;
   onDecided: () => void;
 }) {
   const [outcome, setOutcome] = state<'accept' | 'request_changes'>('accept');
@@ -146,6 +148,7 @@ export function ReviewForm({
 
   function submit(event: Event) {
     event.preventDefault();
+    if (disabled || action.pending()) return;
     void action.run(async () => {
       await reviewControl(programId, controlId, revision, outcome(), input());
       setInput(emptyDecision);
@@ -186,7 +189,11 @@ export function ReviewForm({
           onChange={setInput}
         />
         <Feedback failure={action.failure()} notice={action.notice()} />
-        <Button variant="primary" type="submit" disabled={action.pending()}>
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={disabled || action.pending()}
+        >
           {action.pending() ? 'Recording…' : 'Record review'}
         </Button>
       </Stack>

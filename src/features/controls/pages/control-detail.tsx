@@ -42,6 +42,26 @@ import {
   VersionsCard,
 } from './control-lifecycle.js';
 
+const draftVersionPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function readReviewHandoff(search: string) {
+  const query = new URLSearchParams(search);
+  const revisions = query.getAll('review_revision');
+  const versions = query.getAll('review_draft_version');
+  if (revisions.length === 0 && versions.length === 0) return null;
+  const revision = Number(revisions[0]);
+  if (
+    revisions.length !== 1 ||
+    versions.length !== 1 ||
+    !/^[1-9]\d*$/.test(revisions[0] ?? '') ||
+    !Number.isSafeInteger(revision) ||
+    !draftVersionPattern.test(versions[0] ?? '')
+  )
+    return false;
+  return { revision, draftVersionId: versions[0].toLowerCase() };
+}
+
 // The approved version, its pending successor or retirement (from the impact preview), and the
 // decisions that cite them. Loaded after the draft so the preview targets the exact revision.
 async function loadLifecycle(
@@ -222,6 +242,37 @@ export function ControlDetailPage({
     const retired = approved?.status === 'retired';
     const openDraft = approved === null || preview?.kind === 'successor';
     const pendingRetirement = preview?.kind === 'retirement';
+    const readsReady = !control.pending && !lifecycle.pending;
+    const draftReady =
+      openDraft &&
+      !retired &&
+      current.status === 'draft' &&
+      draftVersionPattern.test(current.draftVersionId ?? '') &&
+      Number.isSafeInteger(current.revision) &&
+      current.revision > 0;
+    const shareableDraft = draftReady && approved === null;
+    const handoff = readReviewHandoff(window.location.search);
+    const handoffWarning =
+      handoff === false
+        ? 'This review link is incomplete or invalid. Ask the author for a new link.'
+        : handoff && !shareableDraft
+          ? 'This draft is no longer available for review. Ask the author for a new link.'
+          : handoff &&
+              (handoff.revision !== current.revision ||
+                handoff.draftVersionId !==
+                  current.draftVersionId?.toLowerCase())
+            ? 'This review link is for a different draft or revision. Ask the author for a new link.'
+            : null;
+    const shareUrl = new URL(
+      organizationPath(`/programs/${programId}/controls/${controlId}`),
+      window.location.origin
+    );
+    shareUrl.searchParams.set('review_revision', String(current.revision));
+    shareUrl.searchParams.set(
+      'review_draft_version',
+      current.draftVersionId ?? ''
+    );
+    shareUrl.hash = 'control-review-heading';
     const review = acceptedReview(
       decisions,
       current.revision,
@@ -234,6 +285,8 @@ export function ControlDetailPage({
         : 'draft';
     lifecycleBody = (
       <>
+        {!readsReady ? <Spinner label="Loading approval status" /> : null}
+        {handoffWarning ? <p role="alert">{handoffWarning}</p> : null}
         <p className="control-lifecycle-state" role="status">
           {retired
             ? `Retired${approved?.effectiveUntil ? ` effective ${approved.effectiveUntil}` : ''}. History is kept.`
@@ -267,13 +320,31 @@ export function ControlDetailPage({
               <Stack gap="md">
                 <section aria-labelledby="control-review-heading">
                   <h3 id="control-review-heading">Review the {subject}</h3>
-                  <ReviewForm
-                    programId={programId}
-                    controlId={controlId}
-                    revision={current.revision}
-                    subject={subject}
-                    onDecided={changed}
-                  />
+                  {shareableDraft && readsReady && !handoffWarning ? (
+                    <p>
+                      <a href={shareUrl.href}>
+                        Share revision {current.revision} for review
+                      </a>
+                      . Share this link with a reviewer who already has access.
+                      After editing the draft, share a new link.
+                    </p>
+                  ) : null}
+                  {handoff && readsReady && !handoffWarning ? (
+                    <p>
+                      This link is for revision {handoff.revision} of this
+                      draft.
+                    </p>
+                  ) : null}
+                  {(draftReady || pendingRetirement) && !handoffWarning ? (
+                    <ReviewForm
+                      programId={programId}
+                      controlId={controlId}
+                      revision={handoff ? handoff.revision : current.revision}
+                      subject={subject}
+                      disabled={!readsReady}
+                      onDecided={changed}
+                    />
+                  ) : null}
                 </section>
                 <section aria-labelledby="control-decide-heading">
                   <h3 id="control-decide-heading">
