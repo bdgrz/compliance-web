@@ -306,6 +306,7 @@ function MappingItem({
           ? ` · reviewed version ${mapping.activeVersionNumber}`
           : ' · no reviewed version'}
       </p>
+      <p className="control-meta">Catalog edition: {mapping.editionId}</p>
       {stale ? (
         <p className="control-meta">
           The reviewed mapping cites an earlier approved control version.
@@ -319,6 +320,8 @@ function MappingItem({
               <strong>Version {version.versionNumber}</strong> ·{' '}
               {label(version.status)} · proposed by {version.proposedBy} on{' '}
               {new Date(version.proposedAt).toLocaleDateString()}
+              <br />
+              Approved control version: {version.controlVersionId}
               <br />
               Rationale: {version.rationale}
               <br />

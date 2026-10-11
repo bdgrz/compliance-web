@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { state } from '@askrjs/askr';
 import { render, type RenderResult } from '@askrjs/askr/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,8 +14,16 @@ const tenantId = '0190a1b2-0000-7000-8000-000000000001';
 const programId = '0190a1b2-0000-7000-8000-0000000000b1';
 const controlId = '0190a1b2-0000-7000-8000-0000000000c1';
 const versionId = '0190a1b2-0000-7000-8000-0000000000d1';
-const editionId = '0190a1b2-0000-7000-8000-0000000000e9';
-const mappingId = '0190a1b2-0000-7000-8000-0000000000m1';
+const editionId = '0f3c5a52-9d8e-5b4a-8f21-20172022a0f1';
+const mappingId = '0190a1b2-0000-7000-8000-0000000000a1';
+const memberId = '0190a1b2-0000-7000-8000-0000000000f1';
+const reviewId = '0190a1b2-0000-7000-8000-0000000000f2';
+const criterionSummaries = {
+  'CC6.1':
+    'Systems and data are protected by access controls, network boundaries, and encryption.',
+  'CC6.2':
+    'Accounts are created only after approval and disabled when no longer needed.',
+};
 const base = `/api/v1/tenants/${tenantId}`;
 const programPath = `${base}/programs/${programId}`;
 const mappings = `${programPath}/control-mappings`;
@@ -58,7 +67,7 @@ const program: Program = {
   criteriaEditionId: editionId,
 };
 
-const person = (display: string) => ({ kind: 'member', id: 'm', display });
+const person = (display: string) => ({ kind: 'member', id: memberId, display });
 
 function mappingVersion(versionNumber: number, status: string) {
   return {
@@ -69,7 +78,7 @@ function mappingVersion(versionNumber: number, status: string) {
     applicability_explanation: 'Production systems in the boundary.',
     proposed_by: person('Casey Lead'),
     proposed_at: '2026-09-20T00:00:00Z',
-    review_decision_id: status === 'pending' ? null : 'r',
+    review_decision_id: status === 'pending' ? null : reviewId,
     reviewed_by: person('Riley Reviewer'),
     review_rationale: status === 'pending' ? null : 'Agreed.',
     reviewed_at: status === 'pending' ? null : '2026-09-21T00:00:00Z',
@@ -106,7 +115,7 @@ function answers(items: unknown[]) {
     next_stage: 'type_i',
     revision: 3,
     plan: program.plan,
-    last_changed_by_member_id: 'm',
+    last_changed_by_member_id: memberId,
     last_changed_by_display: 'Casey Lead',
     last_changed_at: '2026-09-20T00:00:00Z',
     stage_plan: [],
@@ -122,7 +131,7 @@ function answers(items: unknown[]) {
         category: 'security',
         kind: 'criterion',
         parent_identifier: null,
-        summary: 'Logical access security.',
+        summary: criterionSummaries['CC6.1'],
       },
       {
         edition_id: editionId,
@@ -131,7 +140,7 @@ function answers(items: unknown[]) {
         category: 'security',
         kind: 'criterion',
         parent_identifier: null,
-        summary: 'User registration.',
+        summary: criterionSummaries['CC6.2'],
       },
     ],
     next_cursor: null,
@@ -201,9 +210,103 @@ afterEach(() => {
 });
 
 describe('control criteria mappings (R1-06 frontend #205)', () => {
-  it('ShouldProposeAMappingToACriterionOfTheSelectedEdition', async () => {
+  it('ShouldKeepRetainedSourceIdentitiesGivenTheCurrentApprovedVersionChanges', async () => {
+    // Arrange: the second retained source is a synthetic test version, not a successor workflow.
+    const secondSourceId = '0190a1b2-0000-7000-8000-0000000000d2';
+    const currentSourceId = '0190a1b2-0000-7000-8000-0000000000d3';
+    answers([
+      mapping(
+        'accepted',
+        [
+          mappingVersion(1, 'accepted'),
+          {
+            ...mappingVersion(2, 'rejected'),
+            control_version_id: secondSourceId,
+            rationale: 'Service-account reviews restrict access.',
+            applicability_explanation: 'Production service accounts only.',
+          },
+        ],
+        1
+      ),
+    ]);
+    let changeCurrentVersion!: (value: string) => void;
+    const container = mount(() => {
+      const [currentVersion, setCurrentVersion] = state(versionId);
+      changeCurrentVersion = setCurrentVersion;
+      return (
+        <ControlMappingsCard
+          programId={programId}
+          controlId={controlId}
+          currentVersionId={currentVersion()}
+        />
+      );
+    });
+    await vi.waitFor(() =>
+      expect(
+        container.querySelectorAll('.control-mapping-history > li')
+      ).toHaveLength(2)
+    );
+
+    // Act
+    changeCurrentVersion(currentSourceId);
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain(
+        'The reviewed mapping cites an earlier approved control version.'
+      )
+    );
+
+    // Assert
+    const item = container.querySelector('.control-mapping')!;
+    expect(item.textContent).toContain('CC6.1 (criterion)');
+    expect(item.textContent).toContain(`Catalog edition: ${editionId}`);
+    const history = item.querySelectorAll('.control-mapping-history > li');
+    expect(history[0].textContent).toContain('Version 2 · rejected');
+    expect(history[0].textContent).toContain(
+      `Approved control version: ${secondSourceId}`
+    );
+    expect(history[0].textContent).toContain(
+      'Rationale: Service-account reviews restrict access.'
+    );
+    expect(history[0].textContent).toContain(
+      'Applies to: Production service accounts only.'
+    );
+    expect(history[1].textContent).toContain('Version 1 · accepted');
+    expect(history[1].textContent).toContain(
+      `Approved control version: ${versionId}`
+    );
+    expect(history[1].textContent).toContain(
+      'Rationale: Quarterly reviews restrict access.'
+    );
+    expect(history[1].textContent).toContain(
+      'Applies to: Production systems in the boundary.'
+    );
+    expect(history[0].textContent).not.toContain(versionId);
+    expect(history[1].textContent).not.toContain(secondSourceId);
+    expect(item.textContent).not.toContain(currentSourceId);
+  });
+
+  it('ShouldReopenTheSavedMappingGivenAProposalToTheSelectedEdition', async () => {
     // Arrange
     answers([]);
+    const rationale = 'Access requests are approved.';
+    const applicability = 'Workforce accounts in production.';
+    const saved = {
+      ...mapping(
+        'pending',
+        [
+          {
+            ...mappingVersion(1, 'pending'),
+            rationale,
+            applicability_explanation: applicability,
+            reviewed_by: null,
+            retired_by: null,
+          },
+        ],
+        null
+      ),
+      criterion_identifier: 'CC6.2',
+      revision: 1,
+    };
     api.reply(`POST ${mappings}`, 200, {
       mapping_id: mappingId,
       revision: 1,
@@ -222,20 +325,24 @@ describe('control criteria mappings (R1-06 frontend #205)', () => {
     await vi.waitFor(() =>
       expect(container.querySelectorAll('option')).toHaveLength(3)
     );
+    expect(container.textContent).toContain('not mapped to any criteria yet');
+    expect(
+      api.bodies.filter((b) => b.method === 'GET' && b.path === mappings)
+    ).toHaveLength(1);
     const propose = form(container, 'Propose criteria mapping');
     type(field(propose, 'Criterion'), 'CC6.2');
-    type(
-      field(propose, 'Why this control addresses it'),
-      'Access requests are approved.'
-    );
-    type(
-      field(propose, 'Applicability explanation'),
-      'Workforce accounts in production.'
-    );
+    type(field(propose, 'Why this control addresses it'), rationale);
+    type(field(propose, 'Applicability explanation'), applicability);
+    api.reply(`GET ${mappings}`, 200, {
+      items: [saved],
+      next_cursor: null,
+    });
 
     // Act
     submit(propose);
-    await vi.waitFor(() => expect(sent('POST', mappings)).toBeDefined());
+    await vi.waitFor(() =>
+      expect(container.querySelector('.control-mapping')).not.toBeNull()
+    );
 
     // Assert
     expect(sent('POST', mappings)).toEqual({
@@ -244,12 +351,161 @@ describe('control criteria mappings (R1-06 frontend #205)', () => {
       edition_id: editionId,
       criterion_identifier: 'CC6.2',
       expected_revision: 0,
-      rationale: 'Access requests are approved.',
-      applicability_explanation: 'Workforce accounts in production.',
+      rationale,
+      applicability_explanation: applicability,
     });
-    expect(container.textContent).toContain('not mapped to any criteria yet');
-    expect(await accessibilityViolations(container)).toEqual([]);
+    expect(
+      api.bodies.filter((b) => b.method === 'GET' && b.path === mappings)
+    ).toHaveLength(2);
+    function expectSavedMapping(root: HTMLElement) {
+      const item = root.querySelector('.control-mapping')!;
+      expect(item.textContent).toContain(
+        'CC6.2 (criterion) · pending · no reviewed version'
+      );
+      expect(item.textContent).toContain(`Catalog edition: ${editionId}`);
+      const history = item.querySelectorAll('.control-mapping-history > li');
+      expect(history).toHaveLength(1);
+      expect(history[0].textContent).toContain('Version 1 · pending');
+      expect(history[0].textContent).toContain('proposed by Casey Lead');
+      expect(history[0].textContent).toContain(
+        `Approved control version: ${versionId}`
+      );
+      expect(history[0].textContent).toContain(`Rationale: ${rationale}`);
+      expect(history[0].textContent).toContain(`Applies to: ${applicability}`);
+      expect(history[0].textContent).not.toContain('Reviewed by');
+      expect(root.textContent).not.toContain('not mapped to any criteria yet');
+    }
+    expectSavedMapping(container);
+
+    // Act: dispose the original component; reopening must load the saved server reads.
+    mounted.pop()!.cleanup();
+    expect(container.isConnected).toBe(false);
+    const readPaths = [
+      programPath,
+      mappings,
+      `${base}/criteria-editions/${editionId}/entries`,
+    ];
+    const readsBeforeReopen = readPaths.map(
+      (path) =>
+        api.bodies.filter((b) => b.method === 'GET' && b.path === path).length
+    );
+    const reopened = mount(() => (
+      <ControlMappingsCard
+        programId={programId}
+        controlId={controlId}
+        currentVersionId={versionId}
+      />
+    ));
+    await vi.waitFor(() =>
+      expect(reopened.querySelector('.control-mapping')).not.toBeNull()
+    );
+    await vi.waitFor(() =>
+      expect(reopened.querySelectorAll('option')).toHaveLength(3)
+    );
+
+    // Assert
+    readPaths.forEach((path, index) => {
+      expect(
+        api.bodies.filter((b) => b.method === 'GET' && b.path === path)
+      ).toHaveLength(readsBeforeReopen[index] + 1);
+    });
+    expectSavedMapping(reopened);
+    expect(reopened.querySelector('[role="status"]')).toBeNull();
+    expect(await accessibilityViolations(reopened)).toEqual([]);
   });
+
+  it.each([
+    {
+      refusal: 'AnInvalidCriterion',
+      status: 400,
+      detail: 'The criterion or point of focus is not in the selected edition.',
+    },
+    {
+      refusal: 'ADuplicateMapping',
+      status: 409,
+      detail:
+        'An accepted mapping with the same control version and explanation already exists.',
+    },
+    {
+      refusal: 'AStaleMappingRevision',
+      status: 409,
+      detail:
+        'The control criterion mapping changed. Current revision: 5. Reload it and retry.',
+      feedback:
+        'Someone else changed this mapping since you opened it. Reload to see their changes, then try again.',
+    },
+    {
+      refusal: 'DeniedProgramManagement',
+      status: 403,
+      detail: 'The actor may not manage this program.',
+      feedback: 'You do not have permission to propose the criteria mapping.',
+    },
+    {
+      refusal: 'AForeignOrMissingProgram',
+      status: 404,
+      detail: 'The program was not found.',
+    },
+  ])(
+    'ShouldKeepTheProposalAndHistoryGiven$refusal',
+    async ({ status, detail, feedback }) => {
+      // Arrange: these stub responses prove client feedback, not server authorization.
+      answers([mapping('accepted', [mappingVersion(1, 'accepted')], 1)]);
+      api.reply(`POST ${mappings}`, status, problem(status, detail));
+      const container = mount(() => (
+        <ControlMappingsCard
+          programId={programId}
+          controlId={controlId}
+          currentVersionId={versionId}
+        />
+      ));
+      await vi.waitFor(() =>
+        expect(container.querySelectorAll('option')).toHaveLength(3)
+      );
+      const propose = form(container, 'Propose criteria mapping');
+      type(field(propose, 'Criterion'), 'CC6.1');
+      type(
+        field(propose, 'Why this control addresses it'),
+        'Access reviews cover production.'
+      );
+      type(
+        field(propose, 'Applicability explanation'),
+        'Production workforce accounts.'
+      );
+      const history = container.querySelector('.control-mapping-history')!;
+      const historyBefore = history.textContent;
+      const readsBefore = api.bodies.filter((b) => b.method === 'GET').length;
+
+      // Act
+      submit(propose);
+      await vi.waitFor(() =>
+        expect(propose.querySelector('[role="alert"]')?.textContent).toBe(
+          feedback ?? detail
+        )
+      );
+
+      // Assert
+      expect(form(container, 'Propose criteria mapping')).toBe(propose);
+      expect(field(propose, 'Criterion').value).toBe('CC6.1');
+      expect(field(propose, 'Why this control addresses it').value).toBe(
+        'Access reviews cover production.'
+      );
+      expect(field(propose, 'Applicability explanation').value).toBe(
+        'Production workforce accounts.'
+      );
+      expect(propose.querySelector('button')?.disabled).toBe(false);
+      expect(container.querySelector('.control-mapping-history')).toBe(history);
+      expect(history.textContent).toBe(historyBefore);
+      expect(container.querySelector('[role="status"]')).toBeNull();
+      expect(container.textContent).not.toContain('Proposed mapping to');
+      expect(api.bodies.filter((b) => b.method === 'GET')).toHaveLength(
+        readsBefore
+      );
+      expect(
+        api.bodies.filter((b) => b.method === 'POST' && b.path === mappings)
+      ).toHaveLength(1);
+      expect(sent('POST', mappings)?.expected_revision).toBe(4);
+    }
+  );
 
   it('ShouldReviewAPendingMappingProposal', async () => {
     // Arrange
@@ -403,7 +659,7 @@ describe('control criteria mappings (R1-06 frontend #205)', () => {
 
 describe('criteria coverage (R1-06 frontend #205)', () => {
   function coverageRow(
-    identifier: string,
+    identifier: keyof typeof criterionSummaries,
     state: 'mapped' | 'unmapped',
     pending: number
   ) {
@@ -413,7 +669,7 @@ describe('criteria coverage (R1-06 frontend #205)', () => {
       kind: 'criterion',
       category: 'security',
       parent_identifier: null,
-      summary: `${identifier} summary.`,
+      summary: criterionSummaries[identifier],
       coverage_state: state,
       mapped_controls:
         state === 'mapped'
