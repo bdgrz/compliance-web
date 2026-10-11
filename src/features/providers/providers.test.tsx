@@ -247,25 +247,26 @@ function assuranceAnswers(redactGapDescription = false) {
   });
 }
 
-function emptyAssuranceAnswers() {
-  api.reply(`${providerPath}/assurance-reports`, 200, { items: [], next_cursor: null });
-  api.reply(`${providerPath}/reviews`, 200, { items: [], next_cursor: null });
-  api.reply(`${providerPath}/assurance-coverage`, 200, {
+function emptyAssuranceAnswers(id = providerId, revision = 2, materiality: string | null = 'material') {
+  const path = `${base}/providers/${id}`;
+  api.reply(`${path}/assurance-reports`, 200, { items: [], next_cursor: null });
+  api.reply(`${path}/reviews`, 200, { items: [], next_cursor: null });
+  api.reply(`${path}/assurance-coverage`, 200, {
     tenant_id: tenantId,
-    provider_id: providerId,
-    provider_revision: 2,
+    provider_id: id,
+    provider_revision: revision,
     as_of: '2026-10-01',
-    materiality: 'material',
-    status: 'no_review',
+    materiality,
+    status: materiality === null ? 'unresolved_materiality' : 'no_review',
     complete: false,
-    reasons: ['no_review'],
+    reasons: [materiality === null ? 'materiality_unresolved' : 'no_review_recorded'],
     latest_review_id: null,
     latest_reviewed_at: null,
     next_review_due: null,
     latest_conclusion: null,
     reports: [],
   });
-  api.reply(`${providerPath}/coverage-gaps`, 200, { items: [], next_cursor: null });
+  api.reply(`${path}/coverage-gaps`, 200, { items: [], next_cursor: null });
 }
 
 function field(container: HTMLElement, label: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
@@ -365,6 +366,150 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
+  it('ShouldReopenSavedFactsAndHistoryGivenProviderRegistrationAndRevision', async () => {
+    // Arrange: API fixtures prove client request/readback behavior, not backend persistence.
+    const registration = { provider_id: '0190a1b2-0000-7000-8000-0000000000b5', revision: 1 };
+    const savedPath = `${base}/providers/${registration.provider_id}`;
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    lookups();
+    api.reply(`GET ${base}/providers`, 200, { items: [], next_cursor: null });
+    api.reply(`POST ${base}/providers`, 200, registration);
+    const requests: { method: string; url: URL }[] = [];
+    const fetchReply = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : null;
+      requests.push({
+        method: request?.method ?? init?.method ?? 'GET',
+        url: new URL(request ? request.url : String(input), 'http://app.test'),
+      });
+      return fetchReply(input, init);
+    });
+    const container = mount(ProvidersPage);
+    await vi.waitFor(() => expect(container.querySelector(`option[value="${ownerId}"]`)).not.toBeNull());
+    expect(field(container, 'Provider name').required).toBe(true);
+    expect(field(container, 'Provider kind').required).toBe(true);
+    expect(container.textContent).toContain('They need no login.');
+    typeInto(container, 'Provider name', ' Cedar Cloud ');
+    typeInto(container, 'Provider kind', ' managed hosting ');
+    typeInto(container, 'Accountable owner', ownerId);
+    typeInto(container, 'Owner reference', ' Supplier register ');
+
+    // Act
+    submit(container, 'Record a provider');
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(`/acme/providers/${registration.provider_id}`));
+
+    // Assert
+    const sent = api.bodies.find((request) => request.method === 'POST' && request.path === `${base}/providers`)?.body as { content: Record<string, unknown> };
+    expect(sent).toEqual({
+      content: {
+        name: 'Cedar Cloud', provider_kind: 'managed hosting',
+        materiality: null, materiality_basis: [], materiality_rationale: null,
+        subservice: false, boundary_treatment: null, boundary_treatment_rationale: null,
+        owner_person_id: ownerId, owner_reference: 'Supplier register',
+        dependencies: [], source_citation: null,
+      },
+    });
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+
+    // Leave authoring and derive the fresh server fixture from the submitted authored facts.
+    mounted.pop()!.cleanup();
+    const original = {
+      tenant_id: tenantId, provider_id: registration.provider_id, revision: registration.revision,
+      content: { ...structuredClone(sent.content), owner_person_revision: 1 },
+      source_kind: 'manual', lifecycle: 'active', unresolved: ['materiality', 'source_citation'],
+      recorded_by: { kind: 'member', id: '0190a1b2-0000-7000-8000-0000000000f1', display: 'Jordan Recorder' },
+      recorded_at: '2026-10-01T12:00:00Z',
+    };
+    api.reply(`GET ${base}/providers`, 200, { items: [original], next_cursor: null });
+    const registerReads = api.requested.filter((path) => path === `${base}/providers`).length;
+    const register = mount(ProvidersPage);
+    await vi.waitFor(() => expect(register.querySelector(`a[href="/acme/providers/${registration.provider_id}"]`)?.textContent).toBe('Cedar Cloud'));
+    expect(api.requested.filter((path) => path === `${base}/providers`)).toHaveLength(registerReads + 1);
+    expect(register.textContent).toContain('managed hosting');
+    expect(register.textContent).toContain('Riley Owner');
+    expect([...register.querySelectorAll('.provider-list .application-unresolved li')].map((item) => item.textContent)).toEqual(['Materiality unresolved', 'Source citation unresolved']);
+    expect(register.textContent).toContain('It is not an assurance conclusion or a scope approval.');
+    mounted.pop()!.cleanup();
+
+    api.reply(`GET ${savedPath}`, 200, original);
+    api.reply(`${savedPath}/revisions`, 200, { items: [original], next_cursor: null });
+    emptyAssuranceAnswers(registration.provider_id, 1, null);
+    const detail = mount(() => <ProviderDetailPage providerId={registration.provider_id} />);
+    await vi.waitFor(() => expect(detail.querySelector('form[aria-label="Revise provider"]')).not.toBeNull());
+    await vi.waitFor(() => expect(detail.querySelectorAll('.provider-history > li')).toHaveLength(1));
+    expect(detail.querySelector('h1')?.textContent).toBe('Cedar Cloud');
+    expect(field(detail, 'Provider kind').value).toBe('managed hosting');
+    await vi.waitFor(() => expect(field(detail, 'Accountable owner').value).toBe(ownerId));
+    expect(field(detail, 'Owner reference').value).toBe('Supplier register');
+    expect(detail.textContent).toContain('Riley Owner');
+    expect(detail.textContent).toContain(`Revision 1. Recorded by Jordan Recorder on ${new Date(original.recorded_at).toLocaleDateString()} (Manual entry).`);
+    expect(detail.textContent).not.toContain('Recorded by Riley Owner');
+    expect([...detail.querySelectorAll('ul[aria-label="Unresolved"] > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved', 'Source citation unresolved']);
+    expect(detail.textContent).toContain('Authored facts only: not an assurance conclusion or a scope approval.');
+    await vi.waitFor(() => expect(detail.querySelector('section[aria-label="Assurance coverage status"] > p')?.textContent).toBe('Materiality unresolved as of 2026-10-01 · Follow-up required'));
+    expect([...detail.querySelectorAll('section[aria-label="Assurance coverage status"] > ul > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved']);
+
+    const producedRevision = 2;
+    api.reply(`PUT ${savedPath}`, 200, { provider_id: registration.provider_id, revision: producedRevision });
+    const beforeRevision = globalThis.fetch;
+    let revised = original;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : null;
+      const url = new URL(request ? request.url : String(input), 'http://app.test');
+      const method = request?.method ?? init?.method ?? 'GET';
+      const response = await beforeRevision(input, init);
+      if (method === 'PUT' && url.pathname === savedPath && response.ok) {
+        const update = api.bodies.find((entry) => entry.method === 'PUT' && entry.path === savedPath)?.body as { content: Record<string, unknown> };
+        revised = {
+          ...original, revision: producedRevision,
+          content: { ...structuredClone(update.content), owner_person_revision: 1 },
+          recorded_by: { kind: 'member', id: '0190a1b2-0000-7000-8000-0000000000f2', display: 'Morgan Editor' },
+          recorded_at: '2026-10-02T13:00:00Z',
+        };
+        api.reply(`GET ${savedPath}`, 200, revised);
+        api.reply(`${savedPath}/revisions`, 200, { items: [original, revised], next_cursor: null });
+        emptyAssuranceAnswers(registration.provider_id, producedRevision, null);
+      }
+      return response;
+    });
+    typeInto(detail, 'Provider name', ' Cedar Cloud Services ');
+    submit(detail, 'Revise provider');
+    await vi.waitFor(() => expect(detail.textContent).toContain(`Revision 2. Recorded by Morgan Editor on ${new Date(revised.recorded_at).toLocaleDateString()}`));
+    await vi.waitFor(() => expect(detail.querySelectorAll('.provider-history > li')).toHaveLength(2));
+    expect(api.bodies.filter((request) => request.method === 'PUT')).toEqual([
+      { method: 'PUT', path: savedPath, body: { expected_revision: 1, content: { ...sent.content, name: 'Cedar Cloud Services' } } },
+    ]);
+    expect(detail.querySelector('h1')?.textContent).toBe('Cedar Cloud Services');
+    expect(detail.querySelector('form[aria-label="Revise provider"] [role="alert"]')).toBeNull();
+    expect(requests.filter((request) => request.method === 'GET' && request.url.pathname === savedPath).map((request) => request.url.searchParams.get('minimum_revision'))).toEqual([null, '2']);
+    expect(api.requested.filter((path) => path === `${savedPath}/revisions`)).toHaveLength(2);
+
+    // Leave again: neither local form state nor the save response can supply this fresh read.
+    mounted.pop()!.cleanup();
+    const reopened = mount(() => <ProviderDetailPage providerId={registration.provider_id} />);
+    await vi.waitFor(() => expect(reopened.querySelector('form[aria-label="Revise provider"]')).not.toBeNull());
+    await vi.waitFor(() => expect(reopened.querySelectorAll('.provider-history > li')).toHaveLength(2));
+    expect(reopened.querySelector('h1')?.textContent).toBe('Cedar Cloud Services');
+    expect(field(reopened, 'Provider name').value).toBe('Cedar Cloud Services');
+    expect(field(reopened, 'Provider kind').value).toBe('managed hosting');
+    await vi.waitFor(() => expect(field(reopened, 'Accountable owner').value).toBe(ownerId));
+    expect(field(reopened, 'Owner reference').value).toBe('Supplier register');
+    expect(reopened.textContent).toContain(`Revision 2. Recorded by Morgan Editor on ${new Date(revised.recorded_at).toLocaleDateString()} (Manual entry).`);
+    expect([...reopened.querySelectorAll('ul[aria-label="Unresolved"] > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved', 'Source citation unresolved']);
+    await vi.waitFor(() => expect(reopened.querySelector('section[aria-label="Assurance coverage status"] > p')?.textContent).toBe('Materiality unresolved as of 2026-10-01 · Follow-up required'));
+    expect([...reopened.querySelectorAll('section[aria-label="Assurance coverage status"] > ul > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved']);
+    const history = [...reopened.querySelectorAll('.provider-history > li')].map((item) => item.textContent);
+    expect(history[0]).toContain(`Revision 2 by Morgan Editor on ${new Date(revised.recorded_at).toLocaleDateString()} · Cedar Cloud Services`);
+    expect(history[1]).toContain(`Revision 1 by Jordan Recorder on ${new Date(original.recorded_at).toLocaleDateString()} · Cedar Cloud`);
+    expect(requests.filter((request) => request.method === 'GET' && request.url.pathname === savedPath).map((request) => request.url.searchParams.get('minimum_revision'))).toEqual([null, '2', null]);
+    expect(api.requested.filter((path) => path === `${savedPath}/revisions`)).toHaveLength(3);
+    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`)).toEqual([`POST ${base}/providers`, `PUT ${savedPath}`]);
+    expect(requests.filter((request) => request.url.pathname.startsWith('/api/v1/tenants/') && request.url.pathname !== '/api/v1/tenants/mine').every((request) => request.url.pathname.startsWith(`${base}/`))).toBe(true);
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
+
   it('ShouldShowForbiddenGivenTheViewerCannotReadTheRegister', async () => {
     // Arrange
     lookups();
@@ -376,6 +521,8 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
 
     // Assert
     expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('.provider-list')).toBeNull();
+    expect(container.textContent).not.toContain('Acme Cloud');
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
@@ -411,7 +558,7 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
     // Arrange
     lookups();
     api.reply(`${base}/providers`, 200, { items: [], next_cursor: null });
-    api.reply(`POST ${base}/providers`, 400, problem(400, 'A provider requires a name.'));
+    api.reply(`POST ${base}/providers`, 400, problem(400, 'A provider requires a name and kind of at most 200 characters.'));
     const container = mount(ProvidersPage);
     await vi.waitFor(() => expect(container.querySelector('form[aria-label="Record a provider"]')).not.toBeNull());
     typeInto(container, 'Provider name', ' Acme Cloud ');
@@ -441,7 +588,39 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
       dependencies: [],
       source_citation: null,
     });
-    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('A provider requires a name.'));
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('A provider requires a name and kind of at most 200 characters.'));
+  });
+
+  it('ShouldRetainEnteredValuesGivenInvalidProviderInput', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    lookups();
+    api.reply(`${base}/providers`, 200, { items: [], next_cursor: null });
+    const detail = 'A provider requires a name and kind of at most 200 characters.';
+    api.reply(`POST ${base}/providers`, 400, problem(400, detail));
+    const container = mount(ProvidersPage);
+    await vi.waitFor(() => expect(container.querySelector('form[aria-label="Record a provider"]')).not.toBeNull());
+    typeInto(container, 'Provider name', '   ');
+    typeInto(container, 'Provider kind', 'hosting');
+    typeInto(container, 'Owner reference', 'Supplier notes');
+
+    // Act
+    submit(container, 'Record a provider');
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe(detail));
+
+    // Assert
+    expect(api.bodies.find((request) => request.method === 'POST')?.body).toMatchObject({ content: { name: '', provider_kind: 'hosting' } });
+    expect(field(container, 'Provider name').value).toBe('   ');
+    expect(field(container, 'Provider kind').value).toBe('hosting');
+    expect(field(container, 'Owner reference').value).toBe('Supplier notes');
+    expect(container.querySelector<HTMLButtonElement>('form[aria-label="Record a provider"] button[type="submit"]')?.disabled).toBe(false);
+    expect(assign).not.toHaveBeenCalled();
+    expect(container.querySelector('.provider-list')).toBeNull();
+    expect(container.querySelector('.provider-history')).toBeNull();
+    expect(container.textContent).toContain('No providers yet.');
+    expect(api.requested.filter((path) => path === `${base}/providers`)).toHaveLength(2);
+    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`)).toEqual([`POST ${base}/providers`]);
   });
 
   it('ShouldRequireARationaleGivenInclusiveTreatment', async () => {
@@ -457,6 +636,37 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
 
     // Assert
     await vi.waitFor(() => expect((field(container, 'Treatment rationale') as HTMLTextAreaElement).required).toBe(true));
+  });
+
+  it('ShouldPreserveDuplicateNameFeedbackGivenAnExistingProvider', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    lookups();
+    api.reply(`${base}/providers`, 200, { items: [providerBody()], next_cursor: null });
+    const detail = 'An active provider already uses this governed name.';
+    api.reply(`POST ${base}/providers`, 409, problem(409, detail));
+    const container = mount(ProvidersPage);
+    await vi.waitFor(() => expect(container.querySelector('form[aria-label="Record a provider"]')).not.toBeNull());
+    typeInto(container, 'Provider name', ' Acme Cloud ');
+    typeInto(container, 'Provider kind', 'hosting');
+    typeInto(container, 'Owner reference', 'Service catalogue');
+
+    // Act
+    submit(container, 'Record a provider');
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+
+    // Assert
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(detail);
+    expect(container.textContent).not.toContain('Someone else changed');
+    expect(field(container, 'Provider name').value).toBe(' Acme Cloud ');
+    expect(field(container, 'Provider kind').value).toBe('hosting');
+    expect(field(container, 'Owner reference').value).toBe('Service catalogue');
+    expect(container.querySelector<HTMLButtonElement>('form[aria-label="Record a provider"] button[type="submit"]')?.disabled).toBe(false);
+    expect(assign).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('.provider-list > li')).toHaveLength(1);
+    expect(container.querySelector('.provider-history')).toBeNull();
+    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`)).toEqual([`POST ${base}/providers`]);
   });
 
   it('ShouldNotOfferExposureBasisGivenNotMaterial', async () => {
@@ -477,6 +687,8 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
 
   it('ShouldShowForbiddenMessageGivenTheViewerCannotRecordProviders', async () => {
     // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
     lookups();
     api.reply(`${base}/providers`, 200, { items: [], next_cursor: null });
     api.reply(`POST ${base}/providers`, 403, problem(403, 'Forbidden'));
@@ -484,13 +696,23 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
     await vi.waitFor(() => expect(container.querySelector('form[aria-label="Record a provider"]')).not.toBeNull());
     typeInto(container, 'Provider name', 'Acme Cloud');
     typeInto(container, 'Provider kind', 'hosting');
+    typeInto(container, 'Owner reference', 'Supplier notes');
 
     // Act
     submit(container, 'Record a provider');
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
 
     // Assert
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('You do not have permission to record the provider');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('You do not have permission to record the provider.');
+    expect(field(container, 'Provider name').value).toBe('Acme Cloud');
+    expect(field(container, 'Provider kind').value).toBe('hosting');
+    expect(field(container, 'Owner reference').value).toBe('Supplier notes');
+    expect(container.querySelector<HTMLButtonElement>('form[aria-label="Record a provider"] button[type="submit"]')?.disabled).toBe(false);
+    expect(assign).not.toHaveBeenCalled();
+    expect(container.querySelector('.provider-list')).toBeNull();
+    expect(container.querySelector('.provider-history')).toBeNull();
+    expect(container.textContent).toContain('No providers yet.');
+    expect(api.bodies.filter((request) => request.method !== 'GET').map((request) => `${request.method} ${request.path}`)).toEqual([`POST ${base}/providers`]);
   });
 });
 
@@ -725,33 +947,72 @@ describe('provider detail, revisions and provenance (R1-14 frontend #232)', () =
 
   it('ShouldAskToReloadGivenAStaleRevisionConflict', async () => {
     // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
     detailAnswers(2);
-    api.reply(`PUT ${providerPath}`, 409, problem(409, 'The provider revision is stale; current revision is 3.'));
+    const detail = 'The provider changed. Current revision: 3. Reload it and retry.';
+    api.reply(`PUT ${providerPath}`, 409, problem(409, detail));
     const container = mount(() => <ProviderDetailPage providerId={providerId} />);
     await vi.waitFor(() => expect(container.querySelector('form[aria-label="Revise provider"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelectorAll('.provider-history > li')).toHaveLength(2));
+    const history = container.querySelector('.provider-history')?.textContent;
+    typeInto(container, 'Provider name', 'My unsaved provider name');
+    typeInto(container, 'Provider kind', 'My unsaved kind');
+    typeInto(container, 'Owner reference', 'My unsaved owner notes');
 
     // Act
     submit(container, 'Revise provider');
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
 
     // Assert
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Someone else changed this provider');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(detail);
+    expect(container.textContent).not.toContain('Someone else changed');
     expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Reload provider')).toBe(true);
+    expect(field(container, 'Provider name').value).toBe('My unsaved provider name');
+    expect(field(container, 'Provider kind').value).toBe('My unsaved kind');
+    expect(field(container, 'Owner reference').value).toBe('My unsaved owner notes');
+    expect(container.querySelector<HTMLButtonElement>('form[aria-label="Revise provider"] button[type="submit"]')?.disabled).toBe(false);
+    expect(container.querySelector('h1')?.textContent).toBe('Acme Cloud');
+    expect(container.textContent).toContain('Revision 2. Recorded by Casey Lead');
+    expect(container.querySelector('.provider-history')?.textContent).toBe(history);
+    expect(container.querySelector('.provider-history')?.textContent).not.toContain('Revision 3');
+    expect(api.requested.filter((path) => path === providerPath)).toHaveLength(2);
+    expect(api.requested.filter((path) => path === `${providerPath}/revisions`)).toHaveLength(1);
+    expect(api.bodies.find((request) => request.method === 'PUT')?.body).toMatchObject({ expected_revision: 2 });
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it('ShouldShowForbiddenMessageGivenTheViewerCannotRevise', async () => {
     // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
     detailAnswers(2);
     api.reply(`PUT ${providerPath}`, 403, problem(403, 'Forbidden'));
     const container = mount(() => <ProviderDetailPage providerId={providerId} />);
     await vi.waitFor(() => expect(container.querySelector('form[aria-label="Revise provider"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelectorAll('.provider-history > li')).toHaveLength(2));
+    const history = container.querySelector('.provider-history')?.textContent;
+    typeInto(container, 'Provider name', 'My denied provider name');
+    typeInto(container, 'Provider kind', 'My denied kind');
+    typeInto(container, 'Owner reference', 'My denied owner notes');
 
     // Act
     submit(container, 'Revise provider');
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
 
     // Assert
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('You do not have permission to save the provider');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('You do not have permission to save the provider.');
+    expect(field(container, 'Provider name').value).toBe('My denied provider name');
+    expect(field(container, 'Provider kind').value).toBe('My denied kind');
+    expect(field(container, 'Owner reference').value).toBe('My denied owner notes');
+    expect(container.querySelector<HTMLButtonElement>('form[aria-label="Revise provider"] button[type="submit"]')?.disabled).toBe(false);
+    expect(container.querySelector('h1')?.textContent).toBe('Acme Cloud');
+    expect(container.textContent).toContain('Revision 2. Recorded by Casey Lead');
+    expect(container.querySelector('.provider-history')?.textContent).toBe(history);
+    expect(container.querySelector('.provider-history')?.textContent).not.toContain('Revision 3');
+    expect(api.requested.filter((path) => path === providerPath)).toHaveLength(2);
+    expect(api.requested.filter((path) => path === `${providerPath}/revisions`)).toHaveLength(1);
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it('ShouldShowForbiddenGivenTheViewerCannotReadTheProvider', async () => {
@@ -765,6 +1026,11 @@ describe('provider detail, revisions and provenance (R1-14 frontend #232)', () =
 
     // Assert
     expect(container.querySelector('a[href="/acme/providers"]')).not.toBeNull();
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('.provider-history')).toBeNull();
+    expect(container.querySelector('.application-facts')).toBeNull();
+    expect(container.textContent).not.toContain('Acme Cloud');
+    expect(container.textContent).not.toContain('Riley Owner');
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
@@ -779,6 +1045,11 @@ describe('provider detail, revisions and provenance (R1-14 frontend #232)', () =
 
     // Assert
     expect(container.querySelector('a[href="/acme/providers"]')).not.toBeNull();
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('.provider-history')).toBeNull();
+    expect(container.querySelector('.application-facts')).toBeNull();
+    expect(container.textContent).not.toContain('Acme Cloud');
+    expect(container.textContent).not.toContain('Riley Owner');
   });
 
   it('ShouldOfferRetryGivenTheProviderFailsToLoad', async () => {

@@ -680,10 +680,6 @@ function failure(result: { ok: false; kind: string; status: number; error?: unkn
   );
 }
 
-export function messageFor(error: Error, subject: string): string {
-  if (!(error instanceof ProviderRequestError)) return error.message;
-  if (error.status === 409 && !error.transient) {
-    return `Someone else changed ${subject} since you opened it. Reload to see their changes, then try again. (${error.message})`;
-  }
+export function messageFor(error: Error, _subject: string): string {
   return error.message;
 }
