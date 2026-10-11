@@ -26,7 +26,13 @@ export function CreateTenantPage() {
   const [slug, setSlug] = state('');
   const [error, setError] = state<string | null>(null);
   const [phase, setPhase] = state<
-    'form' | 'creating' | 'checking' | 'pending' | 'failed' | 'opening'
+    | 'form'
+    | 'creating'
+    | 'checking'
+    | 'pending'
+    | 'failed'
+    | 'rejected'
+    | 'opening'
   >('form');
   const [accepted, setAccepted] = state(false);
   // Keep the response and synchronous action guard stable across component rerenders.
@@ -49,6 +55,9 @@ export function CreateTenantPage() {
     if (readiness.kind === 'ready' && tenant) {
       setPhase('opening');
       window.location.assign(`/${tenant.slug}`);
+    } else if (readiness.kind === 'rejected') {
+      setPhase('rejected');
+      setError(readiness.message);
     } else {
       setPhase(readiness.kind === 'pending' ? 'pending' : 'failed');
       if (readiness.kind === 'failed') setError(readiness.message);
@@ -56,7 +65,13 @@ export function CreateTenantPage() {
   }
 
   async function checkStatus() {
-    if (registration().busy || !accepted() || phase() === 'opening') return;
+    if (
+      registration().busy ||
+      !accepted() ||
+      phase() === 'opening' ||
+      phase() === 'rejected'
+    )
+      return;
     registration().busy = true;
     try {
       await confirmReadiness();
@@ -164,22 +179,26 @@ export function CreateTenantPage() {
                             ? 'Your organization is ready. Opening your workspace…'
                             : phase() === 'pending'
                               ? 'Your organization has been created and is still getting ready. Check status in a moment.'
-                              : 'Your organization has been created. Your workspace readiness still needs confirmation.'}
+                              : phase() === 'rejected'
+                                ? 'Your organization address could not be reserved.'
+                                : 'Your organization has been created. Your workspace readiness still needs confirmation.'}
                     </p>
                   ) : null}
                   {error() ? <p role="alert">{error()}</p> : null}
                   {accepted() ? (
-                    <Button
-                      variant="primary"
-                      width="full"
-                      type="button"
-                      onPress={() => void checkStatus()}
-                      disabled={phase() === 'checking' || phase() === 'opening'}
-                    >
-                      {phase() === 'checking'
-                        ? 'Checking status…'
-                        : 'Check status'}
-                    </Button>
+                    phase() === 'rejected' ? null : (
+                      <Button
+                        variant="primary"
+                        width="full"
+                        type="button"
+                        onPress={() => void checkStatus()}
+                        disabled={phase() === 'checking' || phase() === 'opening'}
+                      >
+                        {phase() === 'checking'
+                          ? 'Checking status…'
+                          : 'Check status'}
+                      </Button>
+                    )
                   ) : (
                     <Button
                       variant="primary"

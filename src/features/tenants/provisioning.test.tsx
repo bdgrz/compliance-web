@@ -239,6 +239,7 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
   const tenant = { tenant_id: 't1', slug: 'acme' };
   const resolutionPath = '/api/v1/tenant-slugs/acme/mine';
   const workspacePath = '/api/v1/tenants/t1';
+  const provisioningPath = '/api/v1/tenants/t1/provisioning-status';
 
   function creationForm() {
     const container = mount(CreateTenantPage);
@@ -311,6 +312,11 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
     vi.stubGlobal('location', { ...window.location, assign });
     api.reply('POST /api/v1/tenants', 200, { tenant_id: 't1', slug: 'acme' });
     api.reply('/api/v1/tenant-slugs/acme/mine', 404);
+    api.reply(provisioningPath, 200, {
+      tenant_id: 't1',
+      status: 'provisioning',
+      failure_code: null,
+    });
     const container = mount(CreateTenantPage);
     setField(container, 'Name', 'Acme');
     setField(container, 'Legal name', 'Acme Corporation Inc.');
@@ -328,9 +334,109 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
 
     // Assert
     expect(assign).not.toHaveBeenCalled();
-    expect(api.requested).toEqual(['/api/v1/tenants', resolutionPath]);
+    expect(api.requested).toEqual([
+      '/api/v1/tenants',
+      resolutionPath,
+      provisioningPath,
+    ]);
     expect(registrations()).toHaveLength(1);
     expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldExplainRejectedRegistrationGivenTheAddressCouldNotBeReserved', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    api.reply('POST /api/v1/tenants', 200, tenant);
+    api.reply(resolutionPath, 404);
+    api.reply(provisioningPath, 200, {
+      tenant_id: 't1',
+      status: 'rejected',
+      failure_code: 'slug_unavailable',
+    });
+    const container = creationForm();
+
+    // Act
+    submit(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        'could not be reserved'
+      )
+    );
+
+    // Assert
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'different address'
+    );
+    expect(container.querySelector('button')).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+    expect(registrations()).toHaveLength(1);
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldKeepTheOrganizationPendingGivenActivationIsCompleteButSlugIsNotResolvable', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    api.reply('POST /api/v1/tenants', 200, tenant);
+    api.reply(resolutionPath, 404);
+    api.reply(provisioningPath, 200, {
+      tenant_id: 't1',
+      status: 'completed',
+      failure_code: null,
+    });
+    const container = creationForm();
+
+    // Act
+    submit(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain(
+        'still getting ready'
+      )
+    );
+
+    // Assert
+    expect(assign).not.toHaveBeenCalled();
+    expect(api.requested).toEqual([
+      '/api/v1/tenants',
+      resolutionPath,
+      provisioningPath,
+    ]);
+    expect(registrations()).toHaveLength(1);
+  });
+
+  it('ShouldAllowReadOnlyRetryGivenProvisioningStatusReadFails', async () => {
+    // Arrange
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    api.reply('POST /api/v1/tenants', 200, tenant);
+    api.reply(resolutionPath, 404);
+    api.reply(provisioningPath, 503);
+    const container = creationForm();
+
+    // Act
+    submit(container);
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        'could not confirm it is ready yet'
+      )
+    );
+    api.reply(provisioningPath, 200, {
+      tenant_id: 't1',
+      status: 'provisioning',
+      failure_code: null,
+    });
+    statusButton(container).click();
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain(
+        'still getting ready'
+      )
+    );
+
+    // Assert
+    expect(assign).not.toHaveBeenCalled();
+    expect(api.requested.filter((path) => path === provisioningPath)).toHaveLength(2);
+    expect(registrations()).toHaveLength(1);
   });
 
   it('ShouldRegisterWithALegalNameAndOpenTheOrganization', async () => {
@@ -374,6 +480,11 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
     api.reply('POST /api/v1/tenants', 200, {
       tenant_id: 'registered-id',
       slug: 'registered-acme',
+    });
+    api.reply('/api/v1/tenants/registered-id/provisioning-status', 200, {
+      tenant_id: 'registered-id',
+      status: 'provisioning',
+      failure_code: null,
     });
     const container = creationForm();
     submit(container);
@@ -593,6 +704,11 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { ...window.location, assign });
     api.reply('POST /api/v1/tenants', 200, tenant);
+    api.reply(provisioningPath, 200, {
+      tenant_id: 't1',
+      status: 'provisioning',
+      failure_code: null,
+    });
     const registration = holdResponse('/api/v1/tenants');
     const container = creationForm();
 

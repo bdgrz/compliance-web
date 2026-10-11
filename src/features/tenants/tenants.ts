@@ -172,10 +172,13 @@ export type RegisteredTenant = NonNullable<RegisterTenantResponse200>;
 export type TenantReadiness =
   | { kind: 'ready' }
   | { kind: 'pending' }
+  | { kind: 'rejected'; message: string }
   | { kind: 'failed'; message: string };
 
 const readinessFailure =
   'Your organization has been created, but we could not confirm it is ready yet. Check status to try again.';
+const rejectedRegistrationMessage =
+  'The requested organization address could not be reserved. Start a new organization with a different address.';
 
 // One bounded check, without selecting or remembering an organization. The route owns selection
 // after navigation; registration and discoverability alone do not prove private workspace access.
@@ -216,7 +219,29 @@ async function readRegisteredTenantReadiness(
   });
   signal.throwIfAborted();
   if (!resolved.ok) {
-    return resolved.status === 404
+    if (resolved.status !== 404) {
+      return { kind: 'failed', message: readinessFailure };
+    }
+
+    const provisioning = await client.getTenantProvisioningStatus({
+      params: { tenant_id: tenant.tenant_id },
+      signal,
+    });
+    signal.throwIfAborted();
+    if (!provisioning.ok || !provisioning.data) {
+      return { kind: 'failed', message: readinessFailure };
+    }
+    if (provisioning.data.tenant_id !== tenant.tenant_id) {
+      return { kind: 'failed', message: readinessFailure };
+    }
+    if (
+      provisioning.data.status === 'rejected' &&
+      provisioning.data.failure_code === 'slug_unavailable'
+    ) {
+      return { kind: 'rejected', message: rejectedRegistrationMessage };
+    }
+    return provisioning.data.status === 'provisioning' ||
+      provisioning.data.status === 'completed'
       ? { kind: 'pending' }
       : { kind: 'failed', message: readinessFailure };
   }
