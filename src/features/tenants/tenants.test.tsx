@@ -248,6 +248,20 @@ describe('organization navigation accessibility (M0-D24)', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
+  it('ShouldOfferInvitationAcceptanceGivenNoMemberships', async () => {
+    // Arrange
+    memberships();
+
+    // Act
+    const container = mount(() => <SelectTenantPage />);
+    await vi.waitFor(() => expect(container.textContent).toContain('No organization access yet'));
+
+    // Assert
+    expect(container.querySelector('a[href="/organizations/invitations/accept"]')?.textContent).toContain(
+      'Accept an invitation'
+    );
+  });
+
   it('ShouldLinkEachMembershipToItsSlugRoute', async () => {
     // Arrange
     memberships(acme, beta);

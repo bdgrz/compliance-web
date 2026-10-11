@@ -96,6 +96,11 @@ export function SelectTenantPage({ userId }: { userId?: string | null } = {}) {
                     <a href={`/${tenant.slug}`}>{tenant.name}</a>
                   </Button>
                 ))}
+                <Button asChild variant="secondary" width="full">
+                  <a href="/organizations/invitations/accept">
+                    Accept an invitation
+                  </a>
+                </Button>
                 {canCreate ? (
                   <Button
                     asChild

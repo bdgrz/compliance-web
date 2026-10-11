@@ -70,6 +70,11 @@ const TeamDetailPage = lazy(() =>
 const MembersPage = lazy(() =>
   import('../features/members/pages/members-list.js').then((module) => module.MembersPage)
 );
+const AcceptInvitationPage = lazy(() =>
+  import('../features/members/pages/accept-invitation.js').then(
+    (module) => module.AcceptInvitationPage
+  )
+);
 const MemberAccessPage = lazy(() =>
   import('../features/members/pages/member-access.js').then((module) => module.MemberAccessPage)
 );
@@ -182,6 +187,7 @@ export const pageRegistry = createRouteRegistry(
         route('/', OrganizationEntryPage);
         route('/organizations', SelectTenantPage);
         route('/organizations/new', CreateTenantPage);
+        route('/organizations/invitations/accept', AcceptInvitationPage);
         route('/admin/tenants', TenantInventoryPage);
         // Links from before organization slugs existed open the same page in the user's organization.
         route('/teams', TeamsEntryPage);
