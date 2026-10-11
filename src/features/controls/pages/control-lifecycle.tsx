@@ -270,9 +270,12 @@ export function ApproveForm({
         <AcceptedReviewNote review={review} revision={revision} />
         <p className="control-meta">
           Owner: {label(ownerResolution)}. The owner named in the draft is only
-          a declaration. Approval verifies that an active client-personnel
-          member is assigned as control owner on this exact revision, and fails
-          with an explanation if not.
+          a declaration. Approval verifies an active eligible client-personnel
+          member assigned as control owner, or a verified workforce Person
+          designated as owner, on this exact draft revision, and fails with an
+          explanation if not. A workforce Person need not sign in. Review and
+          approval remain personal decisions by the signed-in decision maker.
+          Designation grants no access.
         </p>
         {successor ? (
           <p className="control-meta">
@@ -530,6 +533,77 @@ export function RetirementProposalForm({
   );
 }
 
+function RetainedVersion({ version }: { version: ControlVersion }) {
+  const content = version.content;
+  return (
+    <section aria-label={`Retained approved revision ${version.revision}`}>
+      <h3>Retained approved content</h3>
+      <p className="control-meta">
+        <strong>Revision {version.revision}</strong> · {label(version.status)} ·
+        effective {version.effectiveFrom}
+        {version.effectiveUntil
+          ? ` until ${version.effectiveUntil}`
+          : ' · No end date recorded.'}{' '}
+        · approved by {version.approvedBy} on{' '}
+        <time dateTime={version.approvedAt}>
+          {new Date(version.approvedAt).toLocaleString()}
+        </time>
+        {version.waived ? ' (separation of duties waived)' : ''}
+        {version.predecessorVersionId ? ' · successor' : ''}
+      </p>
+      <dl>
+        <dt>Approval rationale</dt>
+        <dd>{version.approvalRationale}</dd>
+        <dt>Owner verification</dt>
+        <dd>{label(version.ownerResolution)}</dd>
+        <dt>Title</dt>
+        <dd>{content.title}</dd>
+        <dt>Objective</dt>
+        <dd>{content.objective}</dd>
+        <dt>Description</dt>
+        <dd>{content.description}</dd>
+        <dt>Implementation narrative</dt>
+        <dd>{content.implementationNarrative}</dd>
+        <dt>Expected evidence</dt>
+        <dd>
+          {content.expectedEvidence.length === 0 ? (
+            'No expected evidence recorded.'
+          ) : (
+            <ul className="plain-list">
+              {content.expectedEvidence.map((description) => (
+                <li>{description}</li>
+              ))}
+            </ul>
+          )}
+        </dd>
+        <dt>Owner reference</dt>
+        <dd>{content.ownerReference || 'No owner reference recorded.'}</dd>
+        <dt>Applicability</dt>
+        <dd>
+          {content.applicability.length === 0 ? (
+            'No applicability references recorded.'
+          ) : (
+            <ul className="plain-list control-applicability">
+              {content.applicability.map((reference) => (
+                <li>
+                  <strong>{reference.subject}</strong> (
+                  {label(reference.subject_type)}): {reference.rationale}
+                  <p className="control-meta">
+                    Reference ID: {reference.entry_id} · Governed record:{' '}
+                    {reference.governed_record_id ??
+                      'No governed record linked.'}{' '}
+                    · Unresolved: {reference.unresolved ? 'yes' : 'no'}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
 function EffectiveLookup({
   programId,
   controlId,
@@ -543,32 +617,36 @@ function EffectiveLookup({
     [programId, controlId, on()]
   );
   return (
-    <Stack gap="sm">
-      <label className="registration-field">
-        <span>Version effective on</span>
-        <input
-          type="date"
-          value={on()}
-          onInput={(event: Event) =>
-            setOn((event.target as HTMLInputElement).value)
-          }
-        />
-      </label>
-      {effective.pending && !effective.value ? (
-        <Spinner label="Loading effective version" />
-      ) : effective.error ? (
-        <p role="alert">{effective.error.message}</p>
-      ) : effective.value ? (
-        <p className="control-effective">
-          Revision {effective.value.revision} ({effective.value.content.title})
-          was in effect on {on()}.
-        </p>
-      ) : (
-        <p className="control-effective">
-          No approved version was in effect on {on()}.
-        </p>
-      )}
-    </Stack>
+    <section aria-label="Effective control version">
+      <Stack gap="sm">
+        <label className="registration-field">
+          <span>Version effective on</span>
+          <input
+            type="date"
+            value={on()}
+            onInput={(event: Event) =>
+              setOn((event.target as HTMLInputElement).value)
+            }
+          />
+        </label>
+        {effective.pending ? (
+          <Spinner label="Loading effective version" />
+        ) : effective.error ? (
+          <p role="alert">{effective.error.message}</p>
+        ) : effective.value ? (
+          <>
+            <p className="control-effective">
+              Revision {effective.value.revision} was in effect on {on()}.
+            </p>
+            <RetainedVersion version={effective.value} />
+          </>
+        ) : (
+          <p className="control-effective">
+            No approved version was in effect on {on()}.
+          </p>
+        )}
+      </Stack>
+    </section>
   );
 }
 
@@ -600,15 +678,7 @@ export function VersionsCard({
             <ol className="plain-list control-versions">
               {versions.map((version) => (
                 <li>
-                  <strong>Revision {version.revision}</strong> ·{' '}
-                  {label(version.status)} · effective {version.effectiveFrom}
-                  {version.effectiveUntil
-                    ? ` until ${version.effectiveUntil}`
-                    : ''}{' '}
-                  · approved by {version.approvedBy} on{' '}
-                  {formDate(version.approvedAt)}
-                  {version.waived ? ' (separation of duties waived)' : ''}
-                  {version.predecessorVersionId ? ' · successor' : ''}
+                  <RetainedVersion version={version} />
                 </li>
               ))}
             </ol>

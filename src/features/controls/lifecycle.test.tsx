@@ -77,6 +77,71 @@ function approvedVersion(
   };
 }
 
+function retainedVersion() {
+  return {
+    ...approvedVersion('superseded', '2026-10-01'),
+    content: {
+      title: 'Retained access policy',
+      objective: 'Retained access stays appropriate.',
+      description: 'Retained production access scope.',
+      implementation_narrative: 'Retained quarterly owner procedure.',
+      expected_evidence_descriptions: [
+        'Retained signed review',
+        'Retained access export',
+      ],
+      owner_reference: 'Retained platform owner',
+      applicability: [
+        {
+          entry_id: 'retained-reference',
+          subject_type: 'system_instance',
+          subject: 'Retained production system',
+          governed_record_id: 'retained-system-id',
+          rationale: 'Retained customer data scope.',
+          unresolved: false,
+        },
+      ],
+    },
+    owner_resolution: 'verified_person',
+    approved_by: { kind: 'member', id: 'p', display: 'Retained Approver' },
+    approval_rationale: 'Authoritative server approval rationale.',
+    approved_at: '2026-09-02T14:30:00Z',
+  };
+}
+
+function expectRetainedSnapshot(
+  snapshot: Element | null,
+  retained: ReturnType<typeof retainedVersion>
+) {
+  expect(snapshot).not.toBeNull();
+  for (const value of [
+    retained.content.title,
+    retained.content.objective,
+    retained.content.description,
+    retained.content.implementation_narrative,
+    ...retained.content.expected_evidence_descriptions,
+    retained.content.owner_reference,
+    'system instance',
+    'retained-reference',
+    'Retained production system',
+    'retained-system-id',
+    'Retained customer data scope.',
+    'Unresolved: no',
+    'Retained Approver',
+    retained.approval_rationale,
+    retained.effective_from,
+    retained.effective_until ?? 'No end date recorded.',
+    retained.status,
+    'verified person',
+  ])
+    expect(snapshot?.textContent).toContain(value);
+  const time = snapshot?.querySelector('time');
+  expect(time?.getAttribute('datetime')).toBe(retained.approved_at);
+  expect(time?.textContent).toBe(
+    new Date(retained.approved_at).toLocaleString()
+  );
+  expect(snapshot?.querySelector('input, textarea, select, button')).toBeNull();
+}
+
 function decision(
   outcome: string,
   revision: number,
@@ -152,6 +217,8 @@ function answers(options: {
   retired?: boolean;
   draftVersionId?: string | null;
   status?: string;
+  draftContent?: unknown;
+  retainedVersion?: unknown;
 }) {
   const openDraft =
     !options.approved ||
@@ -172,7 +239,7 @@ function answers(options: {
     status: options.status ?? 'draft',
     owner_resolution: 'declared_unverified',
     applicability_resolution: 'declared',
-    content,
+    content: options.draftContent ?? content,
     last_changed_by_member_id: 'm',
     last_changed_by_display: 'Casey Lead',
     last_changed_at: '2026-09-20T00:00:00Z',
@@ -191,9 +258,11 @@ function answers(options: {
     next_cursor: null,
   });
   if (options.approved) {
-    const version = options.retired
-      ? approvedVersion('retired', '2026-12-31')
-      : approvedVersion();
+    const version =
+      options.retainedVersion ??
+      (options.retired
+        ? approvedVersion('retired', '2026-12-31')
+        : approvedVersion());
     api.reply(`GET ${control}/current-version`, 200, version);
     api.reply(`GET ${control}/versions`, 200, {
       items: [version],
@@ -323,6 +392,220 @@ afterEach(() => {
 });
 
 describe('control review and lifecycle (R1-05 frontend b #480)', () => {
+  it('ShouldReadRetainedApprovedContentGivenDifferentDraftContent', async () => {
+    // Arrange
+    const retained = retainedVersion();
+    answers({
+      revision: 3,
+      approved: true,
+      draftContent: {
+        ...content,
+        title: 'Draft-only title',
+        objective: 'Draft-only objective',
+      },
+      retainedVersion: retained,
+    });
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.control-versions')).not.toBeNull()
+    );
+
+    // Assert: editable successor fields cannot satisfy this retained snapshot proof.
+    const snapshot = container.querySelector(
+      '.control-versions [aria-label="Retained approved revision 2"]'
+    );
+    expectRetainedSnapshot(snapshot, retained);
+    expect(snapshot?.textContent).not.toContain('Draft-only');
+    expect(container.textContent).toContain('Draft-only title');
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldReadTheReturnedRetainedVersionGivenAnEffectiveDateLookup', async () => {
+    // Arrange: the selected response differs from both the draft and listed version.
+    answers({ revision: 3, approved: true });
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('.control-effective')?.textContent
+      ).toContain('Revision 2')
+    );
+    const retained = {
+      ...retainedVersion(),
+      revision: 7,
+      effective_from: '2026-08-01',
+    };
+    api.reply(`GET ${control}/effective-version`, 200, retained);
+
+    // Act
+    type(field(container, 'Version effective on'), '2026-09-15');
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('.control-effective')?.textContent
+      ).toContain('Revision 7')
+    );
+
+    // Assert
+    const lookup = container.querySelector(
+      'section[aria-label="Effective control version"]'
+    );
+    const snapshot =
+      lookup?.querySelector('[aria-label="Retained approved revision 7"]') ??
+      null;
+    expectRetainedSnapshot(snapshot, retained);
+    expect(lookup?.querySelector('.control-effective')?.textContent).toContain(
+      '2026-09-15'
+    );
+    expect(snapshot?.textContent).not.toContain(content.objective);
+  });
+
+  it('ShouldDescribeMissingRetainedReferencesGivenEmptyOptionalContent', async () => {
+    // Arrange
+    answers({
+      revision: 2,
+      approved: true,
+      retainedVersion: {
+        ...approvedVersion(),
+        content: {
+          ...content,
+          owner_reference: null,
+          expected_evidence_descriptions: [],
+          applicability: [],
+        },
+      },
+    });
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.control-versions')).not.toBeNull()
+    );
+
+    // Assert
+    const snapshot = container.querySelector(
+      '.control-versions [aria-label="Retained approved revision 2"]'
+    );
+    for (const message of [
+      'No owner reference recorded.',
+      'No expected evidence recorded.',
+      'No applicability references recorded.',
+      'No end date recorded.',
+    ])
+      expect(snapshot?.textContent).toContain(message);
+  });
+
+  it('ShouldWithholdThePreviousEffectiveSnapshotGivenAChangedDateRead', async () => {
+    // Arrange
+    answers({ revision: 2, approved: true });
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('.control-effective')?.textContent
+      ).toContain('Revision 2')
+    );
+    api.reply(`GET ${control}/effective-version`, 403, problem(403, 'Denied.'));
+    const release = holdRead(`${control}/effective-version`);
+
+    // Act
+    type(field(container, 'Version effective on'), '2026-08-01');
+    try {
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector('[aria-label="Loading effective version"]')
+        ).not.toBeNull()
+      );
+
+      // Assert
+      expect(container.querySelector('.control-effective')).toBeNull();
+      expect(
+        container.querySelector(
+          'section[aria-label="Effective control version"]'
+        )?.textContent
+      ).not.toContain('Retained approved content');
+    } finally {
+      release();
+    }
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain(
+        'You do not have permission to load the effective control version.'
+      )
+    );
+    expect(container.querySelector('.control-effective')).toBeNull();
+  });
+
+  it.each([
+    [404, 'No approved version was in effect on 2026-08-01.'],
+    [403, 'You do not have permission to load the effective control version.'],
+    [500, 'The effective version could not be read.'],
+  ])(
+    'ShouldExplainTheEffectiveLookupOutcomeGivenStatus%s',
+    async (status, message) => {
+      // Arrange
+      answers({ revision: 2, approved: true });
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(
+          container.querySelector('.control-effective')?.textContent
+        ).toContain('Revision 2')
+      );
+      api.reply(
+        `GET ${control}/effective-version`,
+        status,
+        problem(status, 'The effective version could not be read.')
+      );
+
+      // Act
+      type(field(container, 'Version effective on'), '2026-08-01');
+      await vi.waitFor(() => expect(container.textContent).toContain(message));
+
+      // Assert
+      expect(
+        container.querySelector('.control-effective')?.textContent ?? ''
+      ).not.toContain('Revision 2');
+    }
+  );
+
+  it('ShouldDescribeVerifiedPersonOwnershipGivenFirstApproval', async () => {
+    // Arrange
+    answers({
+      revision: 2,
+      approved: false,
+      decisions: [decision('accept', 2, versionId)],
+    });
+
+    // Act
+    const container = mount(() => (
+      <ControlDetailPage programId={programId} controlId={controlId} />
+    ));
+    await vi.waitFor(() =>
+      expect(form(container, 'Approve control')).not.toBeNull()
+    );
+
+    // Assert
+    const approve = form(container, 'Approve control');
+    expect(approve.textContent).toContain('verified workforce Person');
+    expect(approve.textContent).toContain(
+      'active eligible client-personnel member'
+    );
+    expect(approve.textContent).toContain('on this exact draft revision');
+    expect(approve.textContent).toContain('need not sign in');
+    expect(approve.textContent).toContain(
+      'personal decisions by the signed-in decision maker'
+    );
+    expect(approve.textContent).toContain('Designation grants no access');
+  });
+
   it('ShouldShareTheExactDraftRevisionGivenAnOpenDraft', async () => {
     // Arrange
     answers({ revision: 2, approved: false });
@@ -804,6 +1087,13 @@ describe('control review and lifecycle (R1-05 frontend b #480)', () => {
       field(approve, 'Separation-of-duties waiver ID (optional)'),
       '0190a1b2-0000-7000-8000-0000000000aa'
     );
+    const retained = {
+      ...retainedVersion(),
+      status: 'approved',
+      effective_from: '2026-10-01',
+      effective_until: null,
+    };
+    answers({ revision: 2, approved: true, retainedVersion: retained });
 
     // Act
     submit(approve);
@@ -820,9 +1110,19 @@ describe('control review and lifecycle (R1-05 frontend b #480)', () => {
       impact_digest: null,
       separation_of_duties_waiver_id: '0190a1b2-0000-7000-8000-0000000000aa',
     });
-    expect(container.textContent).toContain(
-      'Approval verifies that an active client-personnel member is assigned as control owner'
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector(
+          '.control-versions [aria-label="Retained approved revision 2"]'
+        )?.textContent
+      ).toContain(retained.approval_rationale)
     );
+    const snapshot = container.querySelector(
+      '.control-versions [aria-label="Retained approved revision 2"]'
+    );
+    expect(snapshot?.textContent).toContain(retained.content.objective);
+    expect(snapshot?.textContent).toContain('Retained Approver');
+    expect(snapshot?.textContent).not.toContain('Reviewed and owned.');
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
@@ -838,7 +1138,7 @@ describe('control review and lifecycle (R1-05 frontend b #480)', () => {
       409,
       problem(
         409,
-        'Activation requires an active client-personnel member assigned control_owner on this exact draft revision.'
+        'Activation requires an active client-personnel member assigned control_owner, or a verified workforce person designated as owner, on this exact draft revision.'
       )
     );
     const container = mount(() => (
@@ -860,7 +1160,69 @@ describe('control review and lifecycle (R1-05 frontend b #480)', () => {
     expect(approve.querySelector('[role="alert"]')?.textContent).toContain(
       'assigned control_owner'
     );
+    expect(approve.querySelector('[role="alert"]')?.textContent).toContain(
+      'or a verified workforce person designated as owner'
+    );
   });
+
+  it.each([
+    [403, 'Denied.', 'You do not have permission to approve this control.'],
+    [
+      409,
+      'The control draft changed. Current revision: 3. Reload it and retry.',
+      'Someone else changed this control since you opened it. Reload to see their changes, then decide again.',
+    ],
+    [
+      409,
+      'Approval requires the latest accepted review of this exact draft revision.',
+      'Approval requires the latest accepted review of this exact draft revision.',
+    ],
+    [
+      409,
+      'Control review and activation are unavailable until all active event readers are upgraded.',
+      'Control review and activation are unavailable until all active event readers are upgraded.',
+    ],
+  ])(
+    'ShouldExplainApprovalRefusalGivenStatus%sAnd%s',
+    async (status, detail, message) => {
+      // Arrange
+      answers({
+        revision: 2,
+        approved: false,
+        decisions: [decision('accept', 2, versionId)],
+      });
+      api.reply(
+        `POST ${control}/draft/approvals`,
+        status,
+        problem(status, detail)
+      );
+      const container = mount(() => (
+        <ControlDetailPage programId={programId} controlId={controlId} />
+      ));
+      await vi.waitFor(() =>
+        expect(form(container, 'Approve control')).not.toBeNull()
+      );
+      const approve = form(container, 'Approve control');
+      type(field(approve, 'Rationale'), 'Ready.');
+
+      // Act
+      submit(approve);
+      await vi.waitFor(() =>
+        expect(approve.querySelector('[role="alert"]')?.textContent).toBe(
+          message
+        )
+      );
+
+      // Assert
+      expect(
+        sent('POST', `${control}/draft/approvals`)?.expected_revision
+      ).toBe(2);
+      expect(
+        sent('POST', `${control}/draft/approvals`)?.accepted_review_decision_id
+      ).toBe(reviewId);
+      expect(approve.querySelector('[role="status"]')).toBeNull();
+    }
+  );
 
   it('ShouldAskToReloadGivenAStaleReviewRevision', async () => {
     // Arrange
