@@ -16,6 +16,10 @@ export interface ApplicationSummary {
   purpose: string;
   ownerReference: string | null;
   classification: string | null;
+  applicationKind: string | null;
+  criticality: string | null;
+  sourceKind: string | null;
+  sourceIdentifier: string | null;
   hasSystemInstances: boolean;
   unresolved: string[];
   lifecycle: string;
@@ -29,11 +33,9 @@ export interface Application extends ApplicationSummary {
   lastChangedAt: string;
 }
 
-export interface ApplicationRevision {
-  revision: number;
-  name: string;
-  purpose: string;
-  ownerReference: string | null;
+export interface ApplicationRevision extends ApplicationSummary {
+  systemOwnerPersonId: string | null;
+  accessOwnerPersonId: string | null;
   changeKind: string;
   actor: string;
   changedAt: string;
@@ -60,6 +62,16 @@ export interface ApplicationContent {
   classification: string | null;
   systemOwnerPersonId: string | null;
   accessOwnerPersonId: string | null;
+}
+
+export interface ApplicationDeclarationContent extends ApplicationContent {
+  applicationKind: string;
+  criticality: string;
+}
+
+export interface ApplicationDeclarationAttempt {
+  tenantId: string;
+  declarationKey: string;
 }
 
 export interface ChangePreview {
@@ -105,6 +117,7 @@ export interface ScopeDecisionInput {
 // Keeps the HTTP status and the server's transient flag so pages can tell forbidden, not found,
 // a stale revision (409), and projection lag (a transient 409) apart. `separationOfDuties` marks a
 // 403 that exists because the viewer registered the record they are approving.
+
 export class ApplicationRequestError extends Error {
   constructor(
     message: string,
@@ -129,6 +142,7 @@ export function codeLabel(code: string): string {
 }
 
 type Item<T> = T | null;
+
 type RawRetirement = { effective_at: string; reason: string; merged_into_application_id: string | null } | null | undefined;
 
 function retirementOf(raw: RawRetirement): Retirement | null {
@@ -148,6 +162,10 @@ type RawApplication = {
   has_system_instances: boolean;
   unresolved: (string | null)[];
   classification?: string | null;
+  application_kind?: string | null;
+  criticality?: string | null;
+  source_kind?: string;
+  source_identifier?: string | null;
   lifecycle?: string;
   retirement?: RawRetirement;
 };
@@ -160,9 +178,13 @@ function summaryOf(item: RawApplication): ApplicationSummary {
     purpose: item.purpose,
     ownerReference: item.owner_reference,
     classification: item.classification ?? null,
+    applicationKind: item.application_kind ?? null,
+    criticality: item.criticality ?? null,
+    sourceKind: item.source_kind ?? null,
+    sourceIdentifier: item.source_identifier ?? null,
     hasSystemInstances: item.has_system_instances,
     unresolved: present(item.unresolved),
-    lifecycle: item.lifecycle ?? 'active',
+    lifecycle: item.lifecycle ?? 'unknown',
     retirement: retirementOf(item.retirement),
   };
 }
@@ -240,9 +262,24 @@ function contentBody(content: ApplicationContent) {
   };
 }
 
-export async function declareApplication(content: ApplicationContent): Promise<string> {
+export async function declareApplication(content: ApplicationDeclarationContent,
+  attempt: ApplicationDeclarationAttempt
+): Promise<string> {
   const tenantId = requireActiveTenantId();
-  const result = await client.declareApplication({ params: { tenant_id: tenantId }, body: contentBody(content) });
+  if (tenantId !== attempt.tenantId) {
+    throw new ApplicationRequestError(
+      'Return to the original organization to record this application.',
+      null,
+      false
+    );
+  }
+  const result = await client.declareApplication({ params: { tenant_id: tenantId }, body: {
+      ...contentBody(content),
+      application_kind: content.applicationKind,
+      criticality: content.criticality,
+      declaration_key: attempt.declarationKey,
+    },
+  });
   if (!result.ok) throw failure(result, 'record the application');
   if (!result.data) throw new ApplicationRequestError('The application was not recorded.', null, false);
   return result.data.application_id;
@@ -343,12 +380,11 @@ export async function listApplicationRevisions(applicationId: string): Promise<A
     if (!result.ok) throw failure(result, 'load the application history');
     for (const item of present(result.data?.items)) {
       revisions.push({
-        revision: Number(item.revision),
-        name: item.name,
-        purpose: item.purpose,
-        ownerReference: item.owner_reference,
+        ...summaryOf(item),
+        systemOwnerPersonId: item.system_owner_person_id ?? null,
+        accessOwnerPersonId: item.access_owner_person_id ?? null,
         changeKind: item.change_kind,
-        actor: item.last_changed_by_display,
+        actor: item.actor?.display ?? item.last_changed_by_display,
         changedAt: item.last_changed_at,
       });
     }
@@ -417,6 +453,7 @@ export interface InstanceBoundaryReference {
 }
 
 // The impact of retiring a system instance: every boundary entry that still names it.
+
 export async function listInstanceBoundaryReferences(
   applicationId: string,
   systemInstanceId: string

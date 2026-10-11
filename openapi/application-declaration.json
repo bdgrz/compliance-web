@@ -1,0 +1,3100 @@
+{
+  "components": {
+    "schemas": {
+      "Portia_1D599653835771B5B38C77F6C963CA25D736248D35B45B1CD6CED58C58E70B11": {
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "application_id"
+        ],
+        "type": [
+          "null",
+          "object"
+        ]
+      },
+      "Portia_76B2F8DCE18988305740F04F455E5EE44559ACE0C8D3EB13F3AD82E25E7CBDAA": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "access_owner_person_id": {
+                  "format": "uuid",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "application_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "application_kind": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "classification": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "criticality": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "has_system_instances": {
+                  "type": "boolean"
+                },
+                "is_restricted": {
+                  "type": "boolean"
+                },
+                "last_changed_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "last_changed_by": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "display"
+                  ],
+                  "type": "object"
+                },
+                "last_changed_by_display": {
+                  "type": "string"
+                },
+                "last_changed_by_member_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner_reference": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "purpose": {
+                  "type": "string"
+                },
+                "retirement": {
+                  "properties": {
+                    "effective_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "merged_into_application_id": {
+                      "format": "uuid",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "effective_at",
+                    "reason",
+                    "merged_into_application_id"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "revision": {
+                  "pattern": "^-?(?:0|[1-9]\\d*)$",
+                  "type": [
+                    "integer",
+                    "string"
+                  ]
+                },
+                "source_identifier": {
+                  "type": "string"
+                },
+                "source_kind": {
+                  "type": "string"
+                },
+                "system_owner_person_id": {
+                  "format": "uuid",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "tenant_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "unresolved": {
+                  "items": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "tenant_id",
+                "application_id",
+                "revision",
+                "name",
+                "purpose",
+                "owner_reference",
+                "source_kind",
+                "source_identifier",
+                "has_system_instances",
+                "unresolved",
+                "last_changed_by_member_id",
+                "last_changed_by_display",
+                "last_changed_at"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": [
+          "null",
+          "object"
+        ]
+      },
+      "Portia_76FEE2CE38AB3B834984306E7594BF9DDA607FB0E43AD58F72C72BA6B0C94AA5": {
+        "properties": {
+          "access_owner_person_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "application_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "application_kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "classification": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "has_system_instances": {
+            "type": "boolean"
+          },
+          "is_restricted": {
+            "type": "boolean"
+          },
+          "last_changed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_changed_by": {
+            "properties": {
+              "display": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "display"
+            ],
+            "type": "object"
+          },
+          "last_changed_by_display": {
+            "type": "string"
+          },
+          "last_changed_by_member_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_reference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "retirement": {
+            "properties": {
+              "effective_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "merged_into_application_id": {
+                "format": "uuid",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "effective_at",
+              "reason",
+              "merged_into_application_id"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "source_identifier": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "system_owner_person_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "application_id",
+          "revision",
+          "name",
+          "purpose",
+          "owner_reference",
+          "source_kind",
+          "source_identifier",
+          "has_system_instances",
+          "unresolved",
+          "last_changed_by_member_id",
+          "last_changed_by_display",
+          "last_changed_at"
+        ],
+        "type": [
+          "null",
+          "object"
+        ]
+      },
+      "Portia_9EC33DB74298F5E94B672DDE0DF53396105C492D9AE401C79800A380051E56F4": {
+        "properties": {
+          "access_owner_person_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actor": {
+            "properties": {
+              "display": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "display"
+            ],
+            "type": "object"
+          },
+          "application_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "application_kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "change_kind": {
+            "type": "string"
+          },
+          "classification": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "has_system_instances": {
+            "type": "boolean"
+          },
+          "is_restricted": {
+            "type": "boolean"
+          },
+          "last_changed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_changed_by_display": {
+            "type": "string"
+          },
+          "last_changed_by_member_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_reference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "retirement": {
+            "properties": {
+              "effective_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "merged_into_application_id": {
+                "format": "uuid",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "effective_at",
+              "reason",
+              "merged_into_application_id"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "source_identifier": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "system_instance": {
+            "properties": {
+              "access_boundary_reference": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "application_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "declared_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "declared_by": {
+                "properties": {
+                  "display": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "display"
+                ],
+                "type": "object"
+              },
+              "declared_by_display": {
+                "type": "string"
+              },
+              "declared_by_member_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "legacy_application_revision": {
+                "items": {},
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "null",
+                  "integer",
+                  "string"
+                ]
+              },
+              "lifecycle": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "retirement": {
+                "properties": {
+                  "effective_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "merged_into_application_id": {
+                    "format": "uuid",
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "effective_at",
+                  "reason",
+                  "merged_into_application_id"
+                ],
+                "type": [
+                  "null",
+                  "object"
+                ]
+              },
+              "revision": {
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "source_identifier": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "source_kind": {
+                "type": "string"
+              },
+              "system_instance_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenant_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "unresolved": {
+                "items": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "tenant_id",
+              "application_id",
+              "system_instance_id",
+              "name",
+              "kind",
+              "access_boundary_reference",
+              "source_kind",
+              "source_identifier",
+              "unresolved",
+              "declared_by_member_id",
+              "declared_by_display",
+              "declared_at"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "system_instance_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "system_owner_person_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "application_id",
+          "revision",
+          "name",
+          "purpose",
+          "owner_reference",
+          "source_kind",
+          "source_identifier",
+          "has_system_instances",
+          "unresolved",
+          "last_changed_by_member_id",
+          "last_changed_by_display",
+          "last_changed_at",
+          "change_kind",
+          "system_instance_id",
+          "system_instance"
+        ],
+        "type": [
+          "null",
+          "object"
+        ]
+      },
+      "Portia_FAF10AE4CF278E00549B9A6EDFD578D62CE0F9F8E983D6B96C6850BF3EB36CCB": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "access_owner_person_id": {
+                  "format": "uuid",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "actor": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "display"
+                  ],
+                  "type": "object"
+                },
+                "application_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "application_kind": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "change_kind": {
+                  "type": "string"
+                },
+                "classification": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "criticality": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "has_system_instances": {
+                  "type": "boolean"
+                },
+                "is_restricted": {
+                  "type": "boolean"
+                },
+                "last_changed_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "last_changed_by_display": {
+                  "type": "string"
+                },
+                "last_changed_by_member_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner_reference": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "purpose": {
+                  "type": "string"
+                },
+                "retirement": {
+                  "properties": {
+                    "effective_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "merged_into_application_id": {
+                      "format": "uuid",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "effective_at",
+                    "reason",
+                    "merged_into_application_id"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "revision": {
+                  "pattern": "^-?(?:0|[1-9]\\d*)$",
+                  "type": [
+                    "integer",
+                    "string"
+                  ]
+                },
+                "source_identifier": {
+                  "type": "string"
+                },
+                "source_kind": {
+                  "type": "string"
+                },
+                "system_instance": {
+                  "properties": {
+                    "access_boundary_reference": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "application_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "declared_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "declared_by": {
+                      "properties": {
+                        "display": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id",
+                        "display"
+                      ],
+                      "type": "object"
+                    },
+                    "declared_by_display": {
+                      "type": "string"
+                    },
+                    "declared_by_member_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "legacy_application_revision": {
+                      "items": {},
+                      "pattern": "^-?(?:0|[1-9]\\d*)$",
+                      "type": [
+                        "null",
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    "lifecycle": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "retirement": {
+                      "properties": {
+                        "effective_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "merged_into_application_id": {
+                          "format": "uuid",
+                          "type": [
+                            "null",
+                            "string"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "effective_at",
+                        "reason",
+                        "merged_into_application_id"
+                      ],
+                      "type": [
+                        "null",
+                        "object"
+                      ]
+                    },
+                    "revision": {
+                      "pattern": "^-?(?:0|[1-9]\\d*)$",
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    "source_identifier": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "source_kind": {
+                      "type": "string"
+                    },
+                    "system_instance_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "tenant_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "unresolved": {
+                      "items": {
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "tenant_id",
+                    "application_id",
+                    "system_instance_id",
+                    "name",
+                    "kind",
+                    "access_boundary_reference",
+                    "source_kind",
+                    "source_identifier",
+                    "unresolved",
+                    "declared_by_member_id",
+                    "declared_by_display",
+                    "declared_at"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "system_instance_id": {
+                  "format": "uuid",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "system_owner_person_id": {
+                  "format": "uuid",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "tenant_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "unresolved": {
+                  "items": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "tenant_id",
+                "application_id",
+                "revision",
+                "name",
+                "purpose",
+                "owner_reference",
+                "source_kind",
+                "source_identifier",
+                "has_system_instances",
+                "unresolved",
+                "last_changed_by_member_id",
+                "last_changed_by_display",
+                "last_changed_at",
+                "change_kind",
+                "system_instance_id",
+                "system_instance"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": [
+          "null",
+          "object"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "BdgrzBearer": {
+        "bearerFormat": "JWT",
+        "description": "A Bdgrz session JWT or access token validated by this deployment's configured issuer and audience. Actor and operation permissions are checked separately.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "BdgrzSessionCookie": {
+        "description": "Bdgrz browser session. Actor, tenant membership and operation permissions are checked separately.",
+        "in": "cookie",
+        "name": "bdgrz_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Bdgrz.Compliance.App",
+    "version": "v1"
+  },
+  "openapi": "3.1.1",
+  "paths": {
+    "/api/v1/tenants/{tenant_id}/applications": {
+      "get": {
+        "operationId": "listApplications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_76B2F8DCE18988305740F04F455E5EE44559ACE0C8D3EB13F3AD82E25E7CBDAA"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "Portia-Transient": {
+                "required": true,
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "WWW-Authenticate": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ],
+        "tags": [
+          "Applications"
+        ]
+      },
+      "post": {
+        "operationId": "declareApplication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "access_owner_person_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "application_kind": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "classification": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "criticality": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "declaration_key": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "is_restricted": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "owner_reference": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "purpose": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "system_owner_person_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "purpose"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_1D599653835771B5B38C77F6C963CA25D736248D35B45B1CD6CED58C58E70B11"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "Portia-Transient": {
+                "required": true,
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "WWW-Authenticate": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ],
+        "tags": [
+          "Applications"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/applications/{application_id}": {
+      "get": {
+        "operationId": "getApplication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minimum_revision",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_76FEE2CE38AB3B834984306E7594BF9DDA607FB0E43AD58F72C72BA6B0C94AA5"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "Portia-Transient": {
+                "required": true,
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "WWW-Authenticate": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ],
+        "tags": [
+          "Applications"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/applications/{application_id}/revisions": {
+      "get": {
+        "operationId": "listApplicationRevisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "minimum_application_revision",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_FAF10AE4CF278E00549B9A6EDFD578D62CE0F9F8E983D6B96C6850BF3EB36CCB"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "Portia-Transient": {
+                "required": true,
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "WWW-Authenticate": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ],
+        "tags": [
+          "Applications"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/applications/{application_id}/revisions/{revision}": {
+      "get": {
+        "operationId": "getApplicationRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_9EC33DB74298F5E94B672DDE0DF53396105C492D9AE401C79800A380051E56F4"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "Portia-Transient": {
+                "required": true,
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "WWW-Authenticate": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "transient": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "format": "uri-reference",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error",
+            "headers": {
+              "Portia-Transient": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ],
+        "tags": [
+          "Applications"
+        ]
+      }
+    }
+  }
+}

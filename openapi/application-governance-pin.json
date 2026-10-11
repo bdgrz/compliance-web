@@ -1,0 +1,58 @@
+{
+  "source_head": "a6d8ffbcd72e04eda6392f90e5c4d80929dd08b4",
+  "merged_backend_sha": "a2b0c358ed210555fe052fd70e55633ec6bba4b6",
+  "source_export": "retry-openapi.json",
+  "whole_export_sha256": "71371232ddbdafa1893fab8b881a2292667a2c16d77e5193a0e068396031dbb1",
+  "fragment": "retry-application-declaration.json",
+  "fragment_sha256": "6790b14745a8fa47b3c8526fc2259bc5122327d0639c99978828ba082824eae6",
+  "operation_ids": [
+    "declareApplication",
+    "getApplication",
+    "getApplicationRevision",
+    "listApplicationRevisions",
+    "listApplications"
+  ],
+  "components": {
+    "securitySchemes": [
+      "BdgrzBearer",
+      "BdgrzSessionCookie"
+    ],
+    "schemas": [
+      "Portia_1D599653835771B5B38C77F6C963CA25D736248D35B45B1CD6CED58C58E70B11",
+      "Portia_76B2F8DCE18988305740F04F455E5EE44559ACE0C8D3EB13F3AD82E25E7CBDAA",
+      "Portia_76FEE2CE38AB3B834984306E7594BF9DDA607FB0E43AD58F72C72BA6B0C94AA5",
+      "Portia_9EC33DB74298F5E94B672DDE0DF53396105C492D9AE401C79800A380051E56F4",
+      "Portia_FAF10AE4CF278E00549B9A6EDFD578D62CE0F9F8E983D6B96C6850BF3EB36CCB"
+    ]
+  },
+  "generator": {
+    "node_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+    "node_version": "v24.18.0",
+    "cli_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+    "cli_version": "0.0.15",
+    "cli_entry_sha256": "e4e48710f67af1863c4eca24ccae70f34bf32064de17f96ee61fe9156fa5026a",
+    "command": [
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+      "generate",
+      "/var/folders/dg/rh2n13nx6cqgwpb8lkkxsgy80000gn/T/compliance-autopilot-951-clb9yd_s/retry-application-declaration.json",
+      "-o",
+      "/var/folders/dg/rh2n13nx6cqgwpb8lkkxsgy80000gn/T/compliance-autopilot-951-clb9yd_s/retry-generated-declaration",
+      "--ref-max-bytes",
+      "33554432",
+      "--json"
+    ],
+    "exit_code": 0,
+    "output_hashes": {
+      ".askr-generated.json": "e4e4ccd1ca7235ccb362a096035e1ff06764c24a98492af234693614c41d21ad",
+      "api.ts": "07a0d1da50aaa4a945225db590cd503730bb53612f4ecb102fd06379d6214322",
+      "index.ts": "697911d5953f5e5c52a854dee2a9467563e4c48aeb964561c1a191161185ff58",
+      "operations.ts": "f0fc9170fa0341fad9f67a02f586237c98df4b363c019b1c87772251a22a93da",
+      "schemas.ts": "fbb31156f10dc4503a8e15221e4edeb85e838cbb90a538e530e9510de897573e"
+    },
+    "executed_at": "2026-10-11T23:03:16.427745+00:00"
+  },
+  "reviewed_head": "a6d8ffbcd72e04eda6392f90e5c4d80929dd08b4",
+  "merged_production_tree": "c2697d08bf411d031bfe0f46640a5a281fe60def",
+  "merged_tree_matches_reviewed_tree": true
+}

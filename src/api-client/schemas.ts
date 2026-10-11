@@ -7000,3 +7000,199 @@ export type PortiaFF553F232A8414665BAE406E202CCC0CC27AC9885754BE84D83F540E440E07
   "excepted": number | string;
 } | null;
 } | null;
+
+export type Portia76B2F8DCE18988305740F04F455E5EE44559ACE0C8D3EB13F3AD82E25E7CBDAA = {
+  "items": Array<{
+  "access_owner_person_id"?: string | null;
+  "application_id": string;
+  "application_kind"?: string | null;
+  "classification"?: string | null;
+  "criticality"?: string | null;
+  "has_system_instances": boolean;
+  "is_restricted"?: boolean;
+  "last_changed_at": string;
+  "last_changed_by"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "last_changed_by_display": string;
+  "last_changed_by_member_id": string;
+  "lifecycle"?: string;
+  "name": string;
+  "owner_reference": string | null;
+  "purpose": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision": number | string;
+  "source_identifier": string;
+  "source_kind": string;
+  "system_owner_person_id"?: string | null;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null>;
+  "next_cursor": string | null;
+} | null;
+
+export type Portia76FEE2CE38AB3B834984306E7594BF9DDA607FB0E43AD58F72C72BA6B0C94AA5 = {
+  "access_owner_person_id"?: string | null;
+  "application_id": string;
+  "application_kind"?: string | null;
+  "classification"?: string | null;
+  "criticality"?: string | null;
+  "has_system_instances": boolean;
+  "is_restricted"?: boolean;
+  "last_changed_at": string;
+  "last_changed_by"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "last_changed_by_display": string;
+  "last_changed_by_member_id": string;
+  "lifecycle"?: string;
+  "name": string;
+  "owner_reference": string | null;
+  "purpose": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision": number | string;
+  "source_identifier": string;
+  "source_kind": string;
+  "system_owner_person_id"?: string | null;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null;
+
+export type Portia9EC33DB74298F5E94B672DDE0DF53396105C492D9AE401C79800A380051E56F4 = {
+  "access_owner_person_id"?: string | null;
+  "actor"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "application_id": string;
+  "application_kind"?: string | null;
+  "change_kind": string;
+  "classification"?: string | null;
+  "criticality"?: string | null;
+  "has_system_instances": boolean;
+  "is_restricted"?: boolean;
+  "last_changed_at": string;
+  "last_changed_by_display": string;
+  "last_changed_by_member_id": string;
+  "lifecycle"?: string;
+  "name": string;
+  "owner_reference": string | null;
+  "purpose": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision": number | string;
+  "source_identifier": string;
+  "source_kind": string;
+  "system_instance": {
+  "access_boundary_reference": string | null;
+  "application_id": string;
+  "declared_at": string;
+  "declared_by"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "declared_by_display": string;
+  "declared_by_member_id": string;
+  "kind": string;
+  "legacy_application_revision"?: number | string | null;
+  "lifecycle"?: string;
+  "name": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision"?: number | string;
+  "source_identifier": string | null;
+  "source_kind": string;
+  "system_instance_id": string;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null;
+  "system_instance_id": string | null;
+  "system_owner_person_id"?: string | null;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null;
+
+export type PortiaFAF10AE4CF278E00549B9A6EDFD578D62CE0F9F8E983D6B96C6850BF3EB36CCB = {
+  "items": Array<{
+  "access_owner_person_id"?: string | null;
+  "actor"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "application_id": string;
+  "application_kind"?: string | null;
+  "change_kind": string;
+  "classification"?: string | null;
+  "criticality"?: string | null;
+  "has_system_instances": boolean;
+  "is_restricted"?: boolean;
+  "last_changed_at": string;
+  "last_changed_by_display": string;
+  "last_changed_by_member_id": string;
+  "lifecycle"?: string;
+  "name": string;
+  "owner_reference": string | null;
+  "purpose": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision": number | string;
+  "source_identifier": string;
+  "source_kind": string;
+  "system_instance": {
+  "access_boundary_reference": string | null;
+  "application_id": string;
+  "declared_at": string;
+  "declared_by"?: {
+  "display": string;
+  "id": string;
+  "kind": string;
+};
+  "declared_by_display": string;
+  "declared_by_member_id": string;
+  "kind": string;
+  "legacy_application_revision"?: number | string | null;
+  "lifecycle"?: string;
+  "name": string;
+  "retirement"?: {
+  "effective_at": string;
+  "merged_into_application_id": string | null;
+  "reason": string;
+} | null;
+  "revision"?: number | string;
+  "source_identifier": string | null;
+  "source_kind": string;
+  "system_instance_id": string;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null;
+  "system_instance_id": string | null;
+  "system_owner_person_id"?: string | null;
+  "tenant_id": string;
+  "unresolved": Array<string | null>;
+} | null>;
+  "next_cursor": string | null;
+} | null;

@@ -366,6 +366,19 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
               <dd>{current.ownerReference ?? 'Unresolved'}</dd>
               <dt>Classification</dt>
               <dd>{current.classification ?? 'Unresolved'}</dd>
+              <dt>Application kind</dt>
+              <dd>{current.applicationKind ?? 'Application kind missing'}</dd>
+              <dt>Criticality</dt>
+              <dd>{current.criticality ?? 'Criticality missing'}</dd>
+              <dt>Source</dt>
+              <dd>
+                {current.sourceKind ?? 'Unknown'}
+                {current.sourceIdentifier
+                  ? ` (${current.sourceIdentifier})`
+                  : ''}
+              </dd>
+              <dt>Lifecycle</dt>
+              <dd>{current.lifecycle}</dd>
               <dt>System owner</dt>
               <dd>
                 <OwnerName personId={current.systemOwnerPersonId} names={ownerNames} />
@@ -467,6 +480,54 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
                     <strong>Revision {revision.revision}</strong> ({codeLabel(revision.changeKind)}) by {revision.actor} on{' '}
                     {new Date(revision.changedAt).toLocaleDateString()} · {revision.name}: {revision.purpose} · Owner:{' '}
                     {revision.ownerReference ?? 'unresolved'}
+                    <span>
+                      {' '}
+                      · Classification:{' '}
+                      {revision.classification ?? 'Unresolved'}
+                    </span>
+                    <span>
+                      {' '}
+                      · Kind:{' '}
+                      {revision.applicationKind ?? 'Application kind missing'}
+                    </span>
+                    <span>
+                      {' '}
+                      · Criticality:{' '}
+                      {revision.criticality ?? 'Criticality missing'}
+                    </span>
+                    <span>
+                      {' '}
+                      · Source: {revision.sourceKind ?? 'Unknown'}
+                      {revision.sourceIdentifier
+                        ? ` (${revision.sourceIdentifier})`
+                        : ''}
+                    </span>
+                    <span> · Lifecycle: {revision.lifecycle}</span>
+                    <span>
+                      {' '}
+                      · System owner:{' '}
+                      <OwnerName
+                        personId={revision.systemOwnerPersonId}
+                        names={ownerNames}
+                      />
+                    </span>
+                    <span>
+                      {' '}
+                      · Access owner:{' '}
+                      <OwnerName
+                        personId={revision.accessOwnerPersonId}
+                        names={ownerNames}
+                      />
+                    </span>
+                    {revision.unresolved.length > 0 ? (
+                      <ul
+                        aria-label={`Unresolved at revision ${revision.revision}`}
+                      >
+                        {revision.unresolved.map((code) => (
+                          <li>{codeLabel(code)}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
               </ol>
