@@ -200,9 +200,55 @@ function detailAnswers(options: { decisions?: unknown[]; assignments?: unknown[]
   api.reply(`GET ${draftPath}/impact-preview`, 200, preview());
 }
 
-function field(container: HTMLElement, label: string) {
-  return [...container.querySelectorAll('label')].find((l) => l.textContent?.trim().startsWith(label))!
-    .querySelector('input, textarea, select') as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+const structuredEntries = [
+  { kind: 'inclusion', subject_type: 'application', subject: 'Payments API', owner_reference: 'Platform lead', rationale: 'Processes customer payments.' },
+  { kind: 'exclusion', subject_type: 'provider', subject: 'Unknown card network', owner_reference: 'Finance lead', rationale: 'Carved out of the service boundary.' },
+  { kind: 'assumption', subject_type: 'process', subject: 'Provider recovery process', owner_reference: 'Operations lead', rationale: 'Provider recovery remains to be confirmed.' },
+  { kind: 'question', subject_type: 'data_flow', subject: 'Uncatalogued export', owner_reference: 'Privacy lead', rationale: 'Confirm the export destination and retention.' },
+];
+
+function draftOnlyAnswers(savedContent: typeof content, draftRevision: number, aggregateRevision: number) {
+  detailAnswers();
+  const draft = { ...version(draftId, draftRevision, 'draft'), content: savedContent };
+  const saved = { ...boundaryBody(), draft, latest_approved_version: null, latest_decision: null, revision: aggregateRevision };
+  api.reply(`GET ${list}`, 200, { items: [saved], next_cursor: null });
+  api.reply(`GET ${detail}`, 200, saved);
+  api.reply(`GET ${detail}/versions`, 200, { items: [draft], next_cursor: null });
+  api.reply(`GET ${detail}/effective-version`, 404, problem(404, 'No approved boundary version.'));
+  api.reply(`GET ${draftPath}/impact-preview`, 200, {
+    ...preview(), revision: draftRevision, approved_version_id: null, changes: [], contributions: [],
+  });
+}
+
+function field(container: Element, label: string) {
+  const labels = [...container.querySelectorAll('label')];
+  const match = labels.find((l) => l.querySelector('span')?.textContent?.trim() === label)
+    ?? labels.find((l) => l.textContent?.trim().startsWith(label));
+  return match!.querySelector('input, textarea, select') as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+}
+
+function expectDraftContent(container: HTMLElement, expected: typeof content) {
+  const form = container.querySelector('.boundary-form')!;
+  expect(field(form, 'System description statement').value).toBe(expected.statement);
+  expect(field(form, 'Engagement stage').value).toBe(expected.engagement_stage);
+  for (const category of form.querySelectorAll<HTMLInputElement>('.boundary-categories input')) {
+    const name = category.parentElement!.textContent!.trim().replace(' (always required)', '').replaceAll(' ', '_');
+    expect(category.checked).toBe(expected.trust_services_categories.includes(name));
+    expect(category.disabled).toBe(name === 'security');
+  }
+  const entries = form.querySelectorAll('.boundary-entry');
+  expect(entries).toHaveLength(expected.entries.length);
+  expected.entries.forEach((entry, index) => {
+    const shown = entries[index];
+    expect(field(shown, 'Kind').value).toBe(entry.kind);
+    expect(field(shown, 'Subject type').value).toBe(entry.subject_type);
+    expect(field(shown, 'Subject').value).toBe(entry.subject);
+    expect(field(shown, 'Owner').value).toBe(entry.owner_reference);
+    expect(field(shown, 'Rationale').value).toBe(entry.rationale);
+    expect(shown.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(!entry.unresolved);
+    expect(shown.querySelector('.boundary-unresolved')?.textContent).toContain('Unresolved reference');
+    expect(shown.textContent).not.toContain('Governed record ID');
+  });
 }
 
 function type(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
@@ -282,7 +328,95 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
     expect(sent.content.entries[0].unresolved).toBe(true);
     expect(sent.content.entries[0].governed_record_id).toBeNull();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('requires a statement');
+    expect(field(container, 'System description statement').value).toBe('Payments platform');
+    expect(field(container, 'Subject').value).toBe('Payments API');
+    expect(field(container, 'Owner').value).toBe('Platform lead');
+    expect(field(container, 'Rationale').value).toBe('Core service');
+    expect(button(container, 'Create draft')?.disabled).toBe(false);
     expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldCreateAndReopenAStructuredDraftGivenASuccessfulRegistration', async () => {
+    // Arrange
+    const registration = { boundary_id: boundaryId, draft_version_id: draftId };
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    api.reply(`GET ${list}`, 200, { items: [], next_cursor: null });
+    api.reply(`POST ${list}`, 200, registration);
+    const container = mount(() => <BoundariesPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('No boundaries yet'));
+    const statement = 'Payments platform draft including unknown inventory references.';
+    const categories = ['security', 'availability', 'processing_integrity', 'confidentiality', 'privacy'];
+    type(field(container, 'System description statement') as HTMLTextAreaElement, statement);
+    choose(field(container, 'Engagement stage') as HTMLSelectElement, 'type_ii');
+    for (const category of container.querySelectorAll<HTMLInputElement>('.boundary-categories input:not(:disabled)')) {
+      check(category);
+    }
+    for (const [index, entry] of structuredEntries.entries()) {
+      button(container, 'Add scope entry')!.click();
+      await vi.waitFor(() => expect(container.querySelectorAll('.boundary-entry')).toHaveLength(index + 1));
+      const shown = container.querySelectorAll('.boundary-entry')[index];
+      choose(field(shown, 'Kind') as HTMLSelectElement, entry.kind);
+      choose(field(shown, 'Subject type') as HTMLSelectElement, entry.subject_type);
+      type(field(shown, 'Subject') as HTMLInputElement, entry.subject);
+      type(field(shown, 'Owner') as HTMLInputElement, entry.owner_reference);
+      type(field(shown, 'Rationale') as HTMLTextAreaElement, entry.rationale);
+      for (const label of ['Subject', 'Owner', 'Rationale']) expect(field(shown, label).required).toBe(true);
+    }
+
+    // Act
+    submit(container.querySelector('.boundary-form')!);
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(`/acme/programs/${programId}/boundaries/${registration.boundary_id}`));
+
+    // Assert
+    const sent = api.bodies.find((b) => b.method === 'POST' && b.path === list)?.body as { content: typeof content };
+    expect(sent).toEqual({
+      content: {
+        statement, engagement_stage: 'type_ii', trust_services_categories: categories,
+        entries: structuredEntries.map((entry) => ({
+          ...entry, entry_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+          governed_record_id: null, unresolved: true,
+        })),
+      },
+    });
+    expect(new Set(sent.content.entries.map((entry) => entry.entry_id)).size).toBe(4);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.boundary-form [role="alert"]')).toBeNull();
+
+    // Leave the authoring component; reopening must read the server fixture afresh.
+    mounted.pop()!.cleanup();
+    const saved = structuredClone(sent.content);
+    draftOnlyAnswers(saved, 1, 1);
+    const readsBeforeReopen = api.requested.filter((path) => path === list).length;
+    const reopenedList = mount(() => <BoundariesPage programId={programId} />);
+    await vi.waitFor(() => expect(reopenedList.textContent).toContain('draft revision 1 · never approved'));
+    expect(api.requested.filter((path) => path === list)).toHaveLength(readsBeforeReopen + 1);
+    const link = reopenedList.querySelector<HTMLAnchorElement>(`a[href="/acme/programs/${programId}/boundaries/${registration.boundary_id}"]`);
+    expect(link?.textContent).toBe(statement);
+    mounted.pop()!.cleanup();
+
+    const reopened = mount(() => <BoundaryDetailPage programId={programId} boundaryId={registration.boundary_id} />);
+    await vi.waitFor(() => expect(reopened.textContent).toContain('Draft revision 1 by Avery Author · never approved'));
+    expect(api.requested.filter((path) => path === detail)).toHaveLength(1);
+    expectDraftContent(reopened, saved);
+    await vi.waitFor(() => expect(button(reopened, 'Revision 1 · draft')).not.toBeUndefined());
+    button(reopened, 'Revision 1 · draft')!.click();
+    await vi.waitFor(() => expect(reopened.querySelector('section[aria-label="Revision 1"]')).not.toBeNull());
+    const scope = reopened.querySelector('section[aria-label="Revision 1"]')!;
+    expect(scope.querySelector('.boundary-scope > p')?.textContent).toBe(statement);
+    expect(scope.querySelector('.boundary-meta')?.textContent).toBe('SOC 2 Type II · categories: security, availability, processing integrity, confidentiality, privacy');
+    for (const [index, entry] of structuredEntries.entries()) {
+      const shown = scope.querySelectorAll('.boundary-entries li')[index];
+      expect(shown.textContent).toContain(`${entry.kind} · ${entry.subject_type.replaceAll('_', ' ')}: ${entry.subject}`);
+      expect(shown.textContent).toContain(`Owner ${entry.owner_reference} · ${entry.rationale}`);
+      expect(shown.textContent).toContain('Unresolved reference');
+    }
+    expect(scope.querySelectorAll('.boundary-entries li')).toHaveLength(4);
+    expect(reopened.textContent).toContain('No approved version is effective on this date.');
+    expect(reopened.textContent).toContain('No decisions yet.');
+    expect(reopened.querySelector('.boundary-decisions')).toBeNull();
+    expect(reopened.querySelectorAll('.boundary-versions li')).toHaveLength(1);
+    expect(api.bodies.filter((b) => b.method !== 'GET').map((b) => `${b.method} ${b.path}`)).toEqual([`POST ${list}`]);
   });
 
   it('ShouldShowForbiddenGivenTheViewerCannotReadBoundaries', async () => {
@@ -295,6 +429,9 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
     // Assert
     await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Boundaries are not available to you'));
     expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('.boundary-list')).toBeNull();
+    expect(container.textContent).not.toContain(content.statement);
+    expect(button(container, 'Create draft')).toBeUndefined();
   });
 
   it('ShouldDistinguishGovernedLinksFromUnresolvedReferences', async () => {
@@ -314,26 +451,79 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
-  it('ShouldReviseTheDraftAgainstTheExpectedRevision', async () => {
+  it('ShouldRefreshAndReopenTheNextDraftRevisionGivenASuccessfulSave', async () => {
     // Arrange
-    detailAnswers();
+    const initial = {
+      statement: 'A saved structured draft before the next edit.',
+      engagement_stage: 'type_i',
+      trust_services_categories: ['security', 'availability'],
+      entries: structuredEntries.map((entry, index) => ({
+        ...entry, entry_id: `0190a1b2-0000-7000-8000-0000000000c${index + 1}`,
+        governed_record_id: null, unresolved: true,
+      })),
+    };
+    draftOnlyAnswers(initial, 3, 5);
     api.reply(`PUT ${draftPath}`, 204);
+    const requests: { method: string; url: URL }[] = [];
+    const fetchReply = globalThis.fetch;
+    const saved = {
+      ...initial,
+      statement: 'Revised structured draft saved for reopening.',
+      engagement_stage: 'type_ii',
+      trust_services_categories: ['security', 'availability', 'confidentiality'],
+      entries: initial.entries.map((entry, index) => index === 3 ? {
+        ...entry, subject: 'Unknown archive destination', owner_reference: 'Data lead', rationale: 'Verify archive ownership before linking.',
+      } : entry),
+    };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : null;
+      const url = new URL(request ? request.url : String(input), 'http://app.test');
+      const method = request?.method ?? init?.method ?? 'GET';
+      requests.push({ method, url });
+      const response = await fetchReply(input, init);
+      if (method === 'PUT' && url.pathname === draftPath && response.status === 204) {
+        draftOnlyAnswers(structuredClone(saved), 4, 6);
+      }
+      return response;
+    });
     const container = mount(() => <BoundaryDetailPage programId={programId} boundaryId={boundaryId} />);
-    await vi.waitFor(() => expect(container.querySelector('.boundary-form')).not.toBeNull());
-    type(field(container, 'System description statement') as HTMLTextAreaElement, 'Revised statement');
+    await vi.waitFor(() => expect(container.textContent).toContain('Draft revision 3 by Avery Author · never approved'));
+    expectDraftContent(container, initial);
+    type(field(container, 'System description statement') as HTMLTextAreaElement, saved.statement);
+    choose(field(container, 'Engagement stage') as HTMLSelectElement, saved.engagement_stage);
+    check(field(container, 'confidentiality') as HTMLInputElement);
+    const question = container.querySelectorAll('.boundary-entry')[3];
+    type(field(question, 'Subject') as HTMLInputElement, saved.entries[3].subject);
+    type(field(question, 'Owner') as HTMLInputElement, saved.entries[3].owner_reference);
+    type(field(question, 'Rationale') as HTMLTextAreaElement, saved.entries[3].rationale);
 
     // Act
     submit(container.querySelector('.boundary-form')!);
-    await vi.waitFor(() => expect(api.bodies.some((b) => b.method === 'PUT')).toBe(true));
+    await vi.waitFor(() => expect(container.textContent).toContain('Draft revision 4 by Avery Author · never approved'));
 
     // Assert
-    const sent = api.bodies.find((b) => b.method === 'PUT' && b.path === draftPath)?.body as {
-      expected_revision: number;
-      content: { statement: string; entries: unknown[] };
-    };
-    expect(sent.expected_revision).toBe(3);
-    expect(sent.content.statement).toBe('Revised statement');
-    expect(sent.content.entries).toHaveLength(2);
+    expect(api.bodies.filter((b) => b.method === 'PUT')).toEqual([
+      { method: 'PUT', path: draftPath, body: { expected_revision: 3, content: saved } },
+    ]);
+    const refreshReads = requests.filter((request) => request.method === 'GET' && request.url.pathname === detail);
+    expect(refreshReads.map((request) => request.url.searchParams.get('minimum_revision'))).toEqual([null, '6']);
+    expect(container.querySelector('h1')?.textContent).toBe(saved.statement);
+    expectDraftContent(container, saved);
+    expect(container.querySelector('.boundary-form [role="alert"]')).toBeNull();
+    expect(container.textContent).toContain('No approved version is effective on this date.');
+    expect(container.textContent).toContain('No decisions yet.');
+
+    // Leave and reopen without the previous component's local revision or form state.
+    mounted.pop()!.cleanup();
+    const reopened = mount(() => <BoundaryDetailPage programId={programId} boundaryId={boundaryId} />);
+    await vi.waitFor(() => expect(reopened.textContent).toContain('Draft revision 4 by Avery Author · never approved'));
+    expectDraftContent(reopened, saved);
+    const reopenedReads = requests.filter((request) => request.method === 'GET' && request.url.pathname === detail);
+    expect(reopenedReads.map((request) => request.url.searchParams.get('minimum_revision'))).toEqual([null, '6', null]);
+    expect(reopened.querySelector('h1')?.textContent).toBe(saved.statement);
+    expect(reopened.textContent).toContain('No decisions yet.');
+    expect(reopened.querySelector('.boundary-decisions')).toBeNull();
+    expect(api.bodies.filter((b) => b.method !== 'GET').map((b) => `${b.method} ${b.path}`)).toEqual([`PUT ${draftPath}`]);
   });
 
   it('ShouldAskToReloadGivenAStaleDraftRevision', async () => {
@@ -342,6 +532,13 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
     api.reply(`PUT ${draftPath}`, 409, problem(409, 'The boundary draft revision is stale.'));
     const container = mount(() => <BoundaryDetailPage programId={programId} boundaryId={boundaryId} />);
     await vi.waitFor(() => expect(container.querySelector('.boundary-form')).not.toBeNull());
+    type(field(container, 'System description statement') as HTMLTextAreaElement, 'My unsaved conflict resolution statement.');
+    choose(field(container, 'Engagement stage') as HTMLSelectElement, 'type_ii');
+    check(field(container, 'privacy') as HTMLInputElement);
+    const exclusion = container.querySelectorAll('.boundary-entry')[1];
+    type(field(exclusion, 'Subject') as HTMLInputElement, 'My unknown provider reference');
+    type(field(exclusion, 'Owner') as HTMLInputElement, 'My draft owner');
+    type(field(exclusion, 'Rationale') as HTMLTextAreaElement, 'My unsaved rationale for the exception.');
 
     // Act
     submit(container.querySelector('.boundary-form')!);
@@ -349,6 +546,17 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
 
     // Assert
     expect(container.querySelector('.boundary-form [role="alert"]')?.textContent).toContain('Someone else changed this boundary');
+    expect(container.querySelector('.boundary-form [role="alert"]')?.textContent).toContain('Reload to see their changes, then try again.');
+    expect(field(container, 'System description statement').value).toBe('My unsaved conflict resolution statement.');
+    expect(field(container, 'Engagement stage').value).toBe('type_ii');
+    expect((field(container, 'privacy') as HTMLInputElement).checked).toBe(true);
+    const retained = container.querySelectorAll('.boundary-entry')[1];
+    expect(field(retained, 'Subject').value).toBe('My unknown provider reference');
+    expect(field(retained, 'Owner').value).toBe('My draft owner');
+    expect(field(retained, 'Rationale').value).toBe('My unsaved rationale for the exception.');
+    expect(retained.querySelector('.boundary-unresolved')?.textContent).toContain('Unresolved reference');
+    expect(button(container, 'Save draft')?.disabled).toBe(false);
+    expect(api.requested.filter((path) => path === detail)).toHaveLength(1);
   });
 
   it('ShouldExplainProjectionLagGivenATransientConflict', async () => {
@@ -364,15 +572,24 @@ describe('boundary authoring (R1-02 frontend #178)', () => {
     expect(button(container, 'Try again')).not.toBeUndefined();
   });
 
-  it('ShouldShowNotFoundGivenABoundaryFromAnotherOrganization', async () => {
+  it.each([
+    [403, 'This boundary is not available to you'],
+    [404, 'Boundary not found'],
+  ])('ShouldHidePrivateDraftGivenADeniedBoundaryRead(%s)', async (status, title) => {
     // Arrange
-    api.reply(`GET ${detail}`, 404, problem(404, 'The boundary was not found.'));
+    api.reply(`GET ${detail}`, status, problem(status, status === 403 ? 'Forbidden' : 'The boundary was not found.'));
 
     // Act
     const container = mount(() => <BoundaryDetailPage programId={programId} boundaryId={boundaryId} />);
 
     // Assert
-    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Boundary not found'));
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe(title));
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('.boundary-scope')).toBeNull();
+    expect(container.querySelector('.boundary-versions')).toBeNull();
+    expect(container.textContent).not.toContain(content.statement);
+    for (const entry of content.entries) expect(container.textContent).not.toContain(entry.subject);
+    expect(button(container, 'Save draft')).toBeUndefined();
   });
 
   it('ShouldShowTheSelectedVersion', async () => {
