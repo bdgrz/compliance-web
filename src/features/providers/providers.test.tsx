@@ -257,9 +257,9 @@ function emptyAssuranceAnswers(id = providerId, revision = 2, materiality: strin
     provider_revision: revision,
     as_of: '2026-10-01',
     materiality,
-    status: 'no_review',
+    status: materiality === null ? 'unresolved_materiality' : 'no_review',
     complete: false,
-    reasons: ['no_review'],
+    reasons: [materiality === null ? 'materiality_unresolved' : 'no_review_recorded'],
     latest_review_id: null,
     latest_reviewed_at: null,
     next_review_due: null,
@@ -448,6 +448,8 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
     expect(detail.textContent).not.toContain('Recorded by Riley Owner');
     expect([...detail.querySelectorAll('ul[aria-label="Unresolved"] > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved', 'Source citation unresolved']);
     expect(detail.textContent).toContain('Authored facts only: not an assurance conclusion or a scope approval.');
+    await vi.waitFor(() => expect(detail.querySelector('section[aria-label="Assurance coverage status"] > p')?.textContent).toBe('Materiality unresolved as of 2026-10-01 · Follow-up required'));
+    expect([...detail.querySelectorAll('section[aria-label="Assurance coverage status"] > ul > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved']);
 
     const producedRevision = 2;
     api.reply(`PUT ${savedPath}`, 200, { provider_id: registration.provider_id, revision: producedRevision });
@@ -496,6 +498,8 @@ describe('provider register list and record (R1-14 frontend #232)', () => {
     expect(field(reopened, 'Owner reference').value).toBe('Supplier register');
     expect(reopened.textContent).toContain(`Revision 2. Recorded by Morgan Editor on ${new Date(revised.recorded_at).toLocaleDateString()} (Manual entry).`);
     expect([...reopened.querySelectorAll('ul[aria-label="Unresolved"] > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved', 'Source citation unresolved']);
+    await vi.waitFor(() => expect(reopened.querySelector('section[aria-label="Assurance coverage status"] > p')?.textContent).toBe('Materiality unresolved as of 2026-10-01 · Follow-up required'));
+    expect([...reopened.querySelectorAll('section[aria-label="Assurance coverage status"] > ul > li')].map((item) => item.textContent)).toEqual(['Materiality unresolved']);
     const history = [...reopened.querySelectorAll('.provider-history > li')].map((item) => item.textContent);
     expect(history[0]).toContain(`Revision 2 by Morgan Editor on ${new Date(revised.recorded_at).toLocaleDateString()} · Cedar Cloud Services`);
     expect(history[1]).toContain(`Revision 1 by Jordan Recorder on ${new Date(original.recorded_at).toLocaleDateString()} · Cedar Cloud`);
