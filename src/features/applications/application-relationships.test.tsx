@@ -266,4 +266,38 @@ describe('application relationships (#27)', () => {
     // Assert
     expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Try again')).toBe(true);
   });
+
+  it('ShouldRetryWithoutMinimumRevisionGivenTheVisibleRevisionShrinksAfterAnAcknowledgedMutation', async () => {
+    // Arrange
+    const current = relationshipPage([relationship()], 10);
+    const acknowledgement = { relationship_id: relationshipId, relationship_revision: 11, state: 'removed' };
+    api.reply(`GET ${relationshipsPath}`, 200, current);
+    api.reply(`GET ${relationshipsPath}?minimum_revision=11`, 409, problem(409, 'The actor-visible relationship revision is below the requested minimum.'));
+    api.reply(`DELETE ${relationshipsPath}/${relationshipId}`, 200, acknowledgement);
+
+    // Act
+    const container = mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Riley Admin'));
+    const remove = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Remove relationship'))!;
+    remove.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('The relationship list changed. Refresh it before continuing.'));
+    expect(api.requestUrls.filter((request) => {
+      if (request.method !== 'GET' || new URL(request.url).pathname !== relationshipsPath) return false;
+      return new URL(request.url).searchParams.get('minimum_revision') === String(acknowledgement.relationship_revision);
+    })).toHaveLength(1);
+    const retry = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Try again')!;
+    retry.click();
+
+    // Assert
+    await vi.waitFor(() => {
+      const unboundedReads = api.requestUrls.filter((request) => {
+        if (request.method !== 'GET' || new URL(request.url).pathname !== relationshipsPath) return false;
+        return new URL(request.url).searchParams.get('minimum_revision') === null;
+      });
+      expect(unboundedReads).toHaveLength(2);
+      expect(container.textContent).not.toContain('The relationship list changed. Refresh it before continuing.');
+    });
+    expect(current.relationship_revision).toBeLessThan(acknowledgement.relationship_revision);
+    expect(container.textContent).toContain('Riley Admin');
+  });
 });

@@ -86,6 +86,13 @@ export function ApplicationRelationshipsCard({
     setVersion(version() + 1);
   }
 
+  function retry() {
+    setMinimumRevision(undefined);
+    setAttempt(null);
+    setActionError(null);
+    setVersion(version() + 1);
+  }
+
   function setTarget(value: string) {
     setTargetApplicationId(value);
     setAttempt(null);
@@ -188,7 +195,7 @@ export function ApplicationRelationshipsCard({
                   ? 'The relationship list changed. Refresh it before continuing.'
                   : listError.message}
               </p>
-              <Button variant="secondary" onPress={() => refresh()}>
+              <Button variant="secondary" onPress={retry}>
                 Try again
               </Button>
             </Stack>
@@ -278,7 +285,7 @@ export function ApplicationRelationshipsCard({
                       </Button>
                     ) : null}
                     {error && isConflict(error) ? (
-                      <Button variant="secondary" onPress={() => refresh()} disabled={pending()}>
+                      <Button variant="secondary" onPress={retry} disabled={pending()}>
                         Refresh relationships
                       </Button>
                     ) : null}
