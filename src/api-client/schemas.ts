@@ -82,6 +82,25 @@ export type Portia013D7F6C3C0FEB6E8082C97A2D31504B222E662A6A84DD2B56600D5BF2D161
   "next_cursor": string | null;
 } | null;
 
+export type Portia40107628C0A7ECB4B65DB4F98D76C5F37ABF4403333DDA4F1DB3DAA17500F39E = {
+  "relationship_id": string;
+  "relationship_revision": number | string;
+  "state": string;
+} | null;
+
+export type Portia6242F6DACFCBF54B0E2B6AF211A10B92CDDEBBDDD5BDE1142D8FEF225AD4CE03 = {
+  "relationship_revision": number | string;
+  "items": Array<{
+  "relationship_id": string;
+  "target_application_id": string;
+  "relationship_type": string;
+  "actor_member_id": string;
+  "actor_display": string;
+  "changed_at": string;
+} | null>;
+  "next_cursor": string | null;
+} | null;
+
 export type Portia013D7F6C3C0FEB6E8082C97A2D31504B222E662A6A84DD2B56600D5BF2D161391 = {
   "kind": string;
   "id": string;

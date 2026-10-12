@@ -1,0 +1,77 @@
+{
+  "source_backend_head": "76a9b8a96dbc732cdfb249ea0c7f7deb47657dc8",
+  "source_export": "GET /openapi/v1.json from bdgrz/compliance@76a9b8a96dbc732cdfb249ea0c7f7deb47657dc8",
+  "whole_export_sha256": "509a9a04db59110ffd6a6e1af8c629ae61e5f5648a0b92a4cd5459792e82e675",
+  "fragment": "application-relationships.json",
+  "fragment_sha256": "c61226e7bbe6a491136794b333a3449c4bc66c7ed96079ded68a5b0df2095765",
+  "operation_ids": [
+    "listApplicationRelationships",
+    "addApplicationRelationship",
+    "removeApplicationRelationship"
+  ],
+  "components": {
+    "securitySchemes": [
+      "BdgrzBearer",
+      "BdgrzSessionCookie"
+    ],
+    "schemas": [
+      "Portia_40107628C0A7ECB4B65DB4F98D76C5F37ABF4403333DDA4F1DB3DAA17500F39E",
+      "Portia_6242F6DACFCBF54B0E2B6AF211A10B92CDDEBBDDD5BDE1142D8FEF225AD4CE03"
+    ]
+  },
+  "generator": {
+    "node_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+    "node_version": "v24.18.0",
+    "cli_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+    "cli_version": "0.0.15",
+    "cli_entry_sha256": "e4e48710f67af1863c4eca24ccae70f34bf32064de17f96ee61fe9156fa5026a",
+    "command": [
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+      "generate",
+      "openapi/application-relationships.json",
+      "-o",
+      "/tmp/compliance-web-relationships-generated-merged-978-final",
+      "--ref-max-bytes",
+      "33554432",
+      "--json"
+    ],
+    "exit_code": 0,
+    "output_hashes": {
+      ".askr-generated.json": "e4e4ccd1ca7235ccb362a096035e1ff06764c24a98492af234693614c41d21ad",
+      "api.ts": "77733bffab3134ba0031d002f770d3e4737a359e37c0d7bf98637a6a3db8097f",
+      "index.ts": "697911d5953f5e5c52a854dee2a9467563e4c48aeb964561c1a191161185ff58",
+      "operations.ts": "e81670fdf9ed726fa950e3eb2d22528eb4d2bf226dd40da1d9d8196458d15300",
+      "schemas.ts": "5b2ffd366dc53e3d75b29b09bf7157e6ef14d830d0f57f156b397538b5c0f60b"
+    },
+    "executed_at": "2026-10-12T15:02:41Z"
+  },
+  "selective_merge": {
+    "operations.ts": {
+      "target_operations": [
+        "listApplicationRelationships",
+        "addApplicationRelationship",
+        "removeApplicationRelationship"
+      ],
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "3d18b7d457f055b48877d86f802eaf7a02a76ef9f600132f4c457391cc997a62"
+    },
+    "schemas.ts": {
+      "target_types": [
+        "Portia40107628C0A7ECB4B65DB4F98D76C5F37ABF4403333DDA4F1DB3DAA17500F39E",
+        "Portia6242F6DACFCBF54B0E2B6AF211A10B92CDDEBBDDD5BDE1142D8FEF225AD4CE03"
+      ],
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "968e27018bfc94e42a8fcf99048cdffce0901e5e2eaf032714b5d17a93cdc66c"
+    },
+    "api.ts": {
+      "target_operations": [
+        "listApplicationRelationships",
+        "addApplicationRelationship",
+        "removeApplicationRelationship"
+      ],
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "3ceabbfd8801722b69d0799cb9c8b84e768cde923abb835a34b3d0091d24dc06"
+    }
+  }
+}
