@@ -14,7 +14,7 @@ import {
   Stack,
 } from '@askrjs/themes/components';
 
-import { organizationPath } from '../../tenants/tenants.js';
+import { currentTenant, organizationPath } from '../../tenants/tenants.js';
 import {
   ApplicationRequestError,
   codeLabel,
@@ -27,7 +27,7 @@ import {
   retireApplication,
   reviseApplication,
   type Application,
-  type ApplicationContent,
+  type ApplicationRevisionContent,
   type ApplicationSummary,
   type ChangePreview,
 } from '../applications.js';
@@ -43,11 +43,11 @@ function OwnerName({ personId, names }: { personId: string | null; names: Map<st
   );
 }
 import { AccessReviewScopePanel } from '../components/access-review-scope-panel.js';
-import { ApplicationFields, cleanContent } from '../components/application-fields.js';
+import { ApplicationFields, cleanRevision, revisionProblem } from '../components/application-fields.js';
 import { ChangePreviewView } from '../components/change-preview.js';
 import { messageFor, startOfDay, today } from '../components/messages.js';
 
-function contentOf(application: Application): ApplicationContent {
+function contentOf(application: Application): ApplicationRevisionContent {
   return {
     name: application.name,
     purpose: application.purpose,
@@ -55,40 +55,102 @@ function contentOf(application: Application): ApplicationContent {
     classification: application.classification,
     systemOwnerPersonId: application.systemOwnerPersonId,
     accessOwnerPersonId: application.accessOwnerPersonId,
+    applicationKind: application.applicationKind ?? '',
+    criticality: application.criticality ?? '',
   };
 }
 
 // Revising previews the change against the expected revision first, then saves that same revision.
 function ReviseCard({ application, onSaved }: { application: Application; onSaved: (revision: number) => void }) {
-  const [content, setContent] = state<ApplicationContent>(contentOf(application));
-  const [preview, setPreview] = state<ChangePreview | null>(null);
+  const [content, setContent] = state<ApplicationRevisionContent>(contentOf(application));
+  const [organization] = state(currentTenant());
+  const [requests] = state({ sequence: 0 });
+  const [preview, setPreview] = state<{
+    tenantId: string;
+    applicationId: string;
+    revision: number;
+    sequence: number;
+    content: ApplicationRevisionContent;
+    impact: ChangePreview;
+  } | null>(null);
   const [pending, setPending] = state(false);
+  const [saving, setSaving] = state(false);
   const [actionError, setActionError] = state<Error | null>(null);
+
+  function sameOrganization() {
+    return organization() !== null && currentTenant() === organization();
+  }
+
+  function isCurrent(sequence: number, submitted: ApplicationRevisionContent) {
+    return sequence === requests().sequence && sameOrganization() &&
+      JSON.stringify(cleanRevision(content())) === JSON.stringify(submitted);
+  }
 
   async function runPreview(event: Event) {
     event.preventDefault();
+    if (saving()) return;
+    const sequence = ++requests().sequence;
+    setPreview(null);
     setActionError(null);
+    setPending(false);
+    if (!sameOrganization()) {
+      setActionError(new Error('Return to the original organization to revise this application.'));
+      return;
+    }
+    const problem = revisionProblem(content());
+    if (problem) {
+      setActionError(new Error(problem));
+      return;
+    }
+    const submitted = cleanRevision(content());
     setPending(true);
     try {
-      setPreview(await previewApplicationChange(application.applicationId, application.revision, { kind: 'revise', content: cleanContent(content()) }));
+      const impact = await previewApplicationChange(application.applicationId, application.revision, { kind: 'revise', content: submitted });
+      if (!isCurrent(sequence, submitted)) return;
+      if (impact.tenantId !== organization()!.tenantId ||
+        impact.applicationId !== application.applicationId ||
+        impact.applicationRevision !== application.revision || impact.changeKind !== 'revise') {
+        throw new Error('The preview did not match this application revision. Preview the change again.');
+      }
+      setPreview({
+        tenantId: organization()!.tenantId, applicationId: application.applicationId,
+        revision: application.revision, sequence, content: submitted, impact,
+      });
     } catch (failure) {
-      setActionError(failure instanceof Error ? failure : new Error('Unable to preview the change.'));
+      if (isCurrent(sequence, submitted))
+        setActionError(failure instanceof Error ? failure : new Error('Unable to preview the change.'));
     } finally {
-      setPending(false);
+      if (sequence === requests().sequence) setPending(false);
     }
   }
 
   async function save() {
+    const ready = preview();
+    if (!ready || pending()) return;
+    if (!isCurrent(ready.sequence, ready.content) ||
+      ready.tenantId !== currentTenant()?.tenantId || ready.applicationId !== application.applicationId ||
+      ready.revision !== application.revision) {
+      ++requests().sequence;
+      setPreview(null);
+      setActionError(new Error('The preview is no longer current. Preview the change again in the original organization.'));
+      return;
+    }
+    const sequence = ++requests().sequence;
+    setPreview(null);
     setActionError(null);
     setPending(true);
+    setSaving(true);
     try {
-      await reviseApplication(application.applicationId, application.revision, cleanContent(content()));
-      setPreview(null);
-      onSaved(application.revision + 1);
+      await reviseApplication(ready.applicationId, ready.revision, ready.content);
+      if (isCurrent(sequence, ready.content)) onSaved(ready.revision + 1);
     } catch (failure) {
-      setActionError(failure instanceof Error ? failure : new Error('Unable to save the application.'));
+      if (isCurrent(sequence, ready.content))
+        setActionError(failure instanceof Error ? failure : new Error('Unable to save the application.'));
     } finally {
-      setPending(false);
+      if (sequence === requests().sequence) {
+        setPending(false);
+        setSaving(false);
+      }
     }
   }
 
@@ -106,20 +168,26 @@ function ReviseCard({ application, onSaved }: { application: Application; onSave
           <Stack gap="sm">
             <ApplicationFields
               content={content()}
+              mode="revision"
+              disabled={saving()}
               onChange={(next) => {
+                if (saving()) return;
+                ++requests().sequence;
                 setContent(next);
                 setPreview(null);
+                setPending(false);
+                setActionError(null);
               }}
             />
             {error ? <p role="alert">{messageFor(error, 'this application')}</p> : null}
             <Button variant="secondary" type="submit" disabled={pending()}>
-              {pending() && !ready ? 'Previewing…' : 'Preview change'}
+              {saving() ? 'Saving…' : pending() ? 'Previewing…' : 'Preview change'}
             </Button>
           </Stack>
         </form>
         {ready ? (
           <Stack gap="sm">
-            <ChangePreviewView preview={ready} />
+            <ChangePreviewView preview={ready.impact} />
             <Button variant="primary" onPress={() => void save()} disabled={pending()}>
               {pending() ? 'Saving…' : 'Save revision'}
             </Button>
@@ -412,7 +480,9 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
             ) : null}
           </CardContent>
         </Card>
-        {retired ? null : <ReviseCard application={current} onSaved={(revision) => reload(revision)} />}
+        {retired || current.applicationId !== applicationId ? null : <ReviseCard
+          key={`${currentTenant()?.tenantId}:${applicationId}:${current.revision}`}
+          application={current} onSaved={(revision) => reload(revision)} />}
         <Card>
           <CardHeader>
             <CardTitle>Reviewed systems</CardTitle>

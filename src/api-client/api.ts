@@ -2200,6 +2200,9 @@ export const api = defineApi({
   "classification"?: string | null;
   "system_owner_person_id"?: string;
   "access_owner_person_id"?: string;
+  "is_restricted"?: boolean;
+  "application_kind"?: string | null;
+  "criticality"?: string | null;
 }>())
     .returns(204, empty())
     .errors({ "400": json<{
@@ -2251,7 +2254,8 @@ export const api = defineApi({
   "detail": string;
   "instance": string;
   "transient"?: boolean;
-}>() }),
+}>() })
+    .security([{"BdgrzSessionCookie":[]},{"BdgrzBearer":[]}]),
   getAccessReviewCoverage: get("/api/v1/tenants/{tenant_id}/applications/{application_id}/access-review-coverage")
     .params<GetAccessReviewCoveragePath>({ "application_id": { style: "simple", explode: false }, "tenant_id": { style: "simple", explode: false } })
     .query<GetAccessReviewCoverageQuery>({ "as_of": { style: "form", explode: true } })
@@ -2423,6 +2427,10 @@ export const api = defineApi({
   "purpose"?: string | null;
   "owner_reference"?: string | null;
   "classification"?: string | null;
+  "system_owner_person_id"?: string;
+  "access_owner_person_id"?: string;
+  "application_kind"?: string | null;
+  "criticality"?: string | null;
 }>())
     .returns(json<PortiaC166B2A6A50AB323EBE10D693B981A72966248C62D0DBCA17A9D1F8C2A0493E1>())
     .errors({ "400": json<{
@@ -2474,7 +2482,8 @@ export const api = defineApi({
   "detail": string;
   "instance": string;
   "transient"?: boolean;
-}>() }),
+}>() })
+    .security([{"BdgrzSessionCookie":[]},{"BdgrzBearer":[]}]),
   retireApplication: post("/api/v1/tenants/{tenant_id}/applications/{application_id}/retirements")
     .params<RetireApplicationPath>({ "application_id": { style: "simple", explode: false }, "tenant_id": { style: "simple", explode: false } })
     .body(json<{

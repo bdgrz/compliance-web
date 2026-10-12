@@ -5,6 +5,10 @@ const fieldLabels: Record<string, string> = {
   purpose: 'Purpose',
   owner_reference: 'Owner',
   classification: 'Classification',
+  application_kind: 'Application kind',
+  criticality: 'Criticality',
+  system_owner_person_id: 'System owner',
+  access_owner_person_id: 'Access owner',
 };
 
 // Advisory impact of a revision or retirement. The server never reports this as complete, so the

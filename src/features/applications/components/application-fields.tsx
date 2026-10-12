@@ -3,6 +3,7 @@ import { resource } from '@askrjs/askr/resources';
 import { listPeople, type Person } from '../../workforce/workforce.js';
 import type { ApplicationContent,
   ApplicationDeclarationContent,
+  ApplicationRevisionContent,
 } from '../applications.js';
 
 export const emptyContent: ApplicationContent = {
@@ -32,6 +33,10 @@ export function cleanContent(content: ApplicationContent): ApplicationContent {
 export function cleanDeclaration(
   content: ApplicationDeclarationContent
 ): ApplicationDeclarationContent {
+  return cleanRevision(content);
+}
+
+export function cleanRevision(content: ApplicationRevisionContent): ApplicationRevisionContent {
   return {
     ...cleanContent(content),
     applicationKind: content.applicationKind.trim(),
@@ -42,6 +47,10 @@ export function cleanDeclaration(
 export function declarationProblem(
   content: ApplicationDeclarationContent
 ): string | null {
+  return revisionProblem(content);
+}
+
+export function revisionProblem(content: ApplicationRevisionContent): string | null {
   for (const [label, value, limit, required] of [
     ['Application name', content.name, 200, true],
     ['Purpose', content.purpose, 2000, true],
@@ -87,6 +96,8 @@ function PersonPicker({
   people,
   unavailable,
   declaration,
+  required,
+  disabled,
   onChange,
 }: {
   label: string;
@@ -95,6 +106,8 @@ function PersonPicker({
   people: Person[];
   unavailable: boolean;
   declaration: boolean;
+  required: boolean;
+  disabled: boolean;
   onChange: (next: string | null) => void;
 }) {
   const known = value === null || people.some((person) => person.personId === value);
@@ -102,8 +115,8 @@ function PersonPicker({
     <label className="registration-field">
       <span>{label}</span>
       <select value={value ?? ''}
-        required={declaration}
-        disabled={declaration && unavailable}
+        required={required}
+        disabled={disabled || (required && unavailable)}
         onChange={(event: Event) => {
           const next = (event.target as HTMLSelectElement).value || null;
           if (
@@ -139,10 +152,12 @@ export function ApplicationFields<
   content,
   onChange,
   mode,
+  disabled = false,
 }: {
   content: T;
   onChange: (next: T) => void;
-  mode?: 'declaration';
+  mode?: 'declaration' | 'revision';
+  disabled?: boolean;
 }) {
   const people = resource(() => listPeople(), []);
   const roster = [...(people.value ?? [])].sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -153,14 +168,15 @@ export function ApplicationFields<
           <span>{field.label}</span>
           <input
             type="text"
+            disabled={disabled}
             value={content[field.key] ?? ''}
             onInput={(event: Event) => onChange({ ...content, [field.key]: (event.target as HTMLInputElement).value,
               })}
             required={field.required ||
-              (mode === 'declaration' && field.key === 'classification')
+              (mode !== undefined && field.key === 'classification')
             }
             maxLength={
-              mode === 'declaration'
+              mode !== undefined
                 ? field.key === 'name' || field.key === 'classification'
                   ? 200
                   : 2000
@@ -170,7 +186,7 @@ export function ApplicationFields<
           {field.hint ? <small>{field.hint}</small> : null}
         </label>
       ))}
-      {mode === 'declaration'
+      {mode !== undefined
         ? (['applicationKind', 'criticality'] as const).map((key) => (
             <label className="registration-field">
               <span>
@@ -178,6 +194,7 @@ export function ApplicationFields<
               </span>
               <input
                 type="text"
+                disabled={disabled}
                 value={content[key] ?? ''}
                 onInput={(event: Event) =>
                   onChange({
@@ -199,6 +216,8 @@ export function ApplicationFields<
           people={roster}
           unavailable={people.error !== null && people.error !== undefined}
           declaration={mode === 'declaration'}
+          required={mode !== undefined}
+          disabled={disabled}
           onChange={(next) => onChange({ ...content, [field.key]: next })}
         />
       ))}
