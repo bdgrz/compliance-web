@@ -20,6 +20,7 @@ import {
   codeLabel,
   declareSystemInstance,
   getApplication,
+  listAccessReviewScopeStatuses,
   listApplicationRevisions,
   listApplications,
   listSystemInstances,
@@ -360,6 +361,7 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
   const [selected, setSelected] = state<string | null>(null);
   const application = resource(() => getApplication(applicationId, minimumRevision()), [applicationId, minimumRevision(), version()]);
   const instances = resource(() => listSystemInstances(applicationId), [applicationId, version()]);
+  const scopeStatuses = resource(() => listAccessReviewScopeStatuses(applicationId), [applicationId, version()]);
   const history = resource(() => listApplicationRevisions(applicationId), [applicationId, version()]);
   const people = resource(() => listPeople().catch(() => [] as Person[]), []);
   const others = resource(() => listApplications(), [version()]);
@@ -409,6 +411,8 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
   const current = application.value!;
   const retired = current.lifecycle === 'retired';
   const systems = instances.value ?? [];
+  const activeSystems = systems.filter((instance) => instance.lifecycle !== 'retired');
+  const statusesByInstance = new Map((scopeStatuses.value ?? []).map((scope) => [scope.systemInstanceId, scope]));
   const chosen = systems.find((instance) => instance.systemInstanceId === selected());
   const ownerNames = new Map((people.value ?? []).map((person) => [person.personId, person.displayName]));
   const mergeTargetId = current.retirement?.mergedIntoApplicationId ?? null;
@@ -499,6 +503,49 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
           </CardHeader>
           <CardContent>
             <Stack gap="sm">
+              <section aria-label="Access-review scope status">
+                <h3>Access-review scope status</h3>
+                {instances.pending && !instances.value ? (
+                  <Spinner label="Loading access-review scope statuses" />
+                ) : instances.error ? (
+                  <p role="note">Access-review scope status is unavailable because the system list could not be loaded.</p>
+                ) : activeSystems.length === 0 ? (
+                  <p>No active systems to show access-review scope status for.</p>
+                ) : scopeStatuses.pending && !scopeStatuses.value ? (
+                  <Spinner label="Loading access-review scope statuses" />
+                ) : scopeStatuses.error ? (
+                  scopeStatuses.error instanceof ApplicationRequestError && scopeStatuses.error.status === 403 ? (
+                    <p role="note">{scopeStatuses.error.message}</p>
+                  ) : (
+                    <Stack gap="sm">
+                      <p role="alert">Access-review scope status could not be loaded. {scopeStatuses.error.message}</p>
+                      <Button variant="secondary" onPress={() => scopeStatuses.refresh()}>
+                        Try again
+                      </Button>
+                    </Stack>
+                  )
+                ) : (
+                  <ul className="plain-list access-review-scope-statuses">
+                    {activeSystems.map((instance) => {
+                      const scope = statusesByInstance.get(instance.systemInstanceId);
+                      const status = scope?.status === 'included'
+                        ? 'Included'
+                        : scope?.status === 'excluded'
+                          ? 'Excluded'
+                          : scope?.status === 'unresolved'
+                            ? 'Unresolved'
+                            : scope
+                              ? 'Unknown'
+                              : 'Status unavailable';
+                      return (
+                        <li aria-label={`Access-review scope status for ${instance.name}`}>
+                          <strong>{instance.name}</strong>: Access-review scope: {status}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
               {instances.pending && !instances.value ? (
                 <Spinner label="Loading reviewed systems" />
               ) : instances.error ? (

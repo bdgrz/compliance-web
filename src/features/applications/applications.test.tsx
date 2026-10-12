@@ -218,6 +218,7 @@ function declarationPosts() {
 beforeEach(async () => {
   clearActiveTenant();
   api = stubApi();
+  api.reply(`${app}/access-review-scopes`, 200, { items: [], next_cursor: null });
   api.reply('/api/v1/tenant-slugs/acme/mine', 200, { tenant_id: tenantId, current_slug: 'acme', redirect: false });
   api.reply('/api/v1/tenants/mine', 200, { items: [{ tenant_id: tenantId, name: 'Acme Corp', slug: 'acme' }], next_cursor: null });
   await resolveTenantRoute('acme', { pathname: '/acme/applications', search: '', hash: '' });
@@ -1751,6 +1752,158 @@ describe('application change and retirement (R1-10d frontend #218)', () => {
     // Assert
     expect(container.querySelector('form[aria-label="Revise application"]')).toBeNull();
     expect(container.querySelector('form[aria-label="Retire application"]')).toBeNull();
+  });
+});
+
+describe('application access-review scope status (R1-10c web #59)', () => {
+  const otherInstanceId = '0190a1b2-0000-7000-8000-0000000000c2';
+  const retiredInstanceId = '0190a1b2-0000-7000-8000-0000000000c3';
+
+  function scopeStatus(systemInstanceId: string, status: string, lifecycle = 'active') {
+    return {
+      tenant_id: tenantId,
+      application_id: applicationId,
+      system_instance_id: systemInstanceId,
+      instance_lifecycle: lifecycle,
+      as_of: '2026-10-12T00:00:00Z',
+      status,
+      review_overdue: false,
+      decision_count: 0,
+      effective: null,
+      upcoming: null,
+    };
+  }
+
+  it('ShouldShowServerReportedStatusForEveryActiveSystemAndOmitRetiredSystems', async () => {
+    // Arrange
+    detailAnswers();
+    const second = { ...instance, system_instance_id: otherInstanceId, name: 'Payroll archive' };
+    const retired = {
+      ...instance,
+      system_instance_id: retiredInstanceId,
+      name: 'Retired payroll server',
+      lifecycle: 'retired',
+    };
+    api.reply(`${app}/system-instances`, 200, { items: [instance, second, retired], next_cursor: null });
+    api.reply(`${app}/access-review-scopes`, 200, {
+      items: [
+        scopeStatus(instanceId, 'included'),
+        scopeStatus(otherInstanceId, 'excluded'),
+        scopeStatus(retiredInstanceId, 'unresolved', 'retired'),
+      ],
+      next_cursor: null,
+    });
+
+    // Act
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('Access-review scope: Excluded'));
+
+    // Assert
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll production"]')?.textContent)
+      .toContain('Included');
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll archive"]')?.textContent)
+      .toContain('Excluded');
+    expect(container.querySelector('[aria-label="Access-review scope status for Retired payroll server"]')).toBeNull();
+    expect(container.querySelector('button[aria-pressed="false"]')?.textContent).toBe('Access-review scope for Payroll production');
+  });
+
+  it('ShouldLoadEveryPageOfAccessReviewScopeStatuses', async () => {
+    // Arrange
+    detailAnswers();
+    const second = { ...instance, system_instance_id: otherInstanceId, name: 'Payroll archive' };
+    api.reply(`${app}/system-instances`, 200, { items: [instance, second], next_cursor: null });
+    api.reply(`${app}/access-review-scopes`, 200, {
+      items: [scopeStatus(instanceId, 'included')],
+      next_cursor: 'next-page',
+    });
+    api.reply(`GET ${app}/access-review-scopes?cursor=next-page`, 200, {
+      items: [scopeStatus(otherInstanceId, 'unresolved')],
+      next_cursor: null,
+    });
+
+    // Act
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('Access-review scope: Unresolved'));
+
+    // Assert
+    expect(api.requestUrls.some(({ url }) => new URL(url).searchParams.get('cursor') === 'next-page')).toBe(true);
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll archive"]')?.textContent)
+      .toContain('Unresolved');
+  });
+
+  it('ShouldShowLoadingStateForAccessReviewScopeStatuses', async () => {
+    // Arrange
+    detailAnswers();
+    const transport = globalThis.fetch;
+    let releaseScopeResponse: (response: Response) => void = () => {
+      throw new Error('The access-review scope request has not started.');
+    };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), 'http://app.test');
+      if (url.pathname === `${app}/access-review-scopes`) {
+        return await new Promise<Response>((resolve) => {
+          releaseScopeResponse = resolve;
+        });
+      }
+      return transport(input, init);
+    });
+
+    // Act
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Payroll'));
+    expect(container.querySelector('[aria-label="Loading access-review scope statuses"]')).not.toBeNull();
+    releaseScopeResponse(new Response(JSON.stringify({ items: [scopeStatus(instanceId, 'unresolved')], next_cursor: null }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await vi.waitFor(() => expect(container.textContent).toContain('Access-review scope: Unresolved'));
+
+    // Assert
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll production"]')?.textContent)
+      .toContain('Unresolved');
+  });
+
+  it('ShouldShowEmptyStateWhenNoActiveSystemsHaveScopeStatus', async () => {
+    // Arrange
+    detailAnswers();
+    api.reply(`${app}/system-instances`, 200, { items: [], next_cursor: null });
+
+    // Act
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('No active systems to show access-review scope status for.'));
+
+    // Assert
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll production"]')).toBeNull();
+  });
+
+  it('ShouldOfferRetryWhenAccessReviewScopeStatusesFailToLoad', async () => {
+    // Arrange
+    detailAnswers();
+    api.reply(`${app}/access-review-scopes`, 500, problem(500, 'Temporary failure'));
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+
+    // Act
+    await vi.waitFor(() => expect(container.textContent).toContain('Access-review scope status could not be loaded'));
+    const retry = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Try again');
+    retry?.click();
+    await vi.waitFor(() => expect(api.requested.filter((path) => path === `${app}/access-review-scopes`)).toHaveLength(2));
+
+    // Assert
+    expect(retry).not.toBeUndefined();
+    expect(container.querySelector('[aria-label="Access-review scope status for Payroll production"]')).toBeNull();
+  });
+
+  it('ShouldExplainForbiddenAccessReviewScopeStatuses', async () => {
+    // Arrange
+    detailAnswers();
+    api.reply(`${app}/access-review-scopes`, 403, problem(403, 'Forbidden'));
+
+    // Act
+    const container = mount(() => <ApplicationDetailPage applicationId={applicationId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('You do not have permission to view access-review scope status for these systems.'));
+
+    // Assert
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Try again')).toBe(false);
   });
 });
 

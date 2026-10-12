@@ -1,6 +1,7 @@
 import { createApiClient } from '../../api-client/index.js';
 import type {
   AddApplicationRelationshipResponse200,
+  ListAccessReviewScopesResponse200,
   ListApplicationRelationshipsResponse200,
   RemoveApplicationRelationshipResponse200,
 } from '../../api-client/operations.js';
@@ -136,6 +137,11 @@ export interface AccessReviewScope {
   status: string;
   effective: ScopeDecision | null;
   decisions: ScopeDecision[];
+}
+
+export interface AccessReviewScopeStatus {
+  systemInstanceId: string;
+  status: string;
 }
 
 export interface ScopeDecisionInput {
@@ -661,6 +667,40 @@ export async function getAccessReviewScope(
       .map(decisionOf)
       .sort((a, b) => b.sequence - a.sequence),
   };
+}
+
+export async function listAccessReviewScopeStatuses(
+  applicationId: string
+): Promise<AccessReviewScopeStatus[]> {
+  const tenantId = requireActiveTenantId();
+  const statuses: AccessReviewScopeStatus[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const result = await client.listAccessReviewScopes({
+      params: { tenant_id: tenantId, application_id: applicationId },
+      query: { limit: 200, cursor },
+    });
+    if (!result.ok) throw failure(result, 'view access-review scope status for these systems');
+    const data = result.data as ListAccessReviewScopesResponse200 | null;
+    if (!data) {
+      throw new ApplicationRequestError('Access-review scope status could not be loaded.', null, false);
+    }
+    statuses.push(
+      ...present(data.items)
+        .filter((item) => item.instance_lifecycle === 'active')
+        .map((item) => ({
+          systemInstanceId: item.system_instance_id,
+          status: item.status,
+        }))
+    );
+    cursor = data.next_cursor ?? undefined;
+    if (cursor && seenCursors.has(cursor)) {
+      throw new ApplicationRequestError('The access-review scope status list could not be paged.', null, false);
+    }
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor !== undefined);
+  return statuses;
 }
 
 export async function decideAccessReviewScope(
