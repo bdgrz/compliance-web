@@ -1,4 +1,4 @@
-import { state } from '@askrjs/askr';
+import { createRef, state } from '@askrjs/askr';
 import { resource } from '@askrjs/askr/resources';
 import {
   Button,
@@ -62,6 +62,7 @@ function contentOf(application: Application): ApplicationRevisionContent {
 
 // Revising previews the change against the expected revision first, then saves that same revision.
 function ReviseCard({ application, onSaved }: { application: Application; onSaved: (revision: number) => void }) {
+  const [editor] = state(createRef<HTMLFormElement>());
   const [content, setContent] = state<ApplicationRevisionContent>(contentOf(application));
   const [organization] = state(currentTenant());
   const [requests] = state({ sequence: 0 });
@@ -82,7 +83,7 @@ function ReviseCard({ application, onSaved }: { application: Application; onSave
   }
 
   function isCurrent(sequence: number, submitted: ApplicationRevisionContent) {
-    return sequence === requests().sequence && sameOrganization() &&
+    return editor().current !== null && sequence === requests().sequence && sameOrganization() &&
       JSON.stringify(cleanRevision(content())) === JSON.stringify(submitted);
   }
 
@@ -164,7 +165,7 @@ function ReviseCard({ application, onSaved }: { application: Application; onSave
         <CardDescription>Preview the impact before saving. Changes save against revision {application.revision}.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={(event: Event) => void runPreview(event)} aria-label="Revise application">
+        <form ref={editor()} onSubmit={(event: Event) => void runPreview(event)} aria-label="Revise application">
           <Stack gap="sm">
             <ApplicationFields
               content={content()}

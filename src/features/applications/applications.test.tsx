@@ -1518,6 +1518,64 @@ describe('revision-bound Application editing (#50)', () => {
     expect(api.bodies.filter((request) => request.path === `${app}/change-previews`)).toHaveLength(1);
   });
 
+  it('ShouldKeepNewApplicationDraftWithoutReloadGivenPreviousApplicationSaveCompletesLate', async () => {
+    // Arrange
+    const otherId = '0190a1b2-0000-7000-8000-0000000000aa';
+    const otherPath = `${base}/applications/${otherId}`;
+    let changeApplication: (id: string) => void = () => {};
+    const { container, form } = await openRevision({}, () => {
+      const [id, setId] = state(applicationId);
+      changeApplication = setId;
+      return <ApplicationDetailPage applicationId={id()} />;
+    });
+    for (const [label, value] of Object.entries(draft)) setField(form, label, value);
+    await matchingPreview(container);
+    api.reply(`PUT ${app}`, 204);
+    api.reply(`GET ${otherPath}`, 200, applicationBody(1, { application_id: otherId, name: 'Other application' }));
+    api.reply(`GET ${otherPath}/system-instances`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${otherPath}/revisions`, 200, { items: [], next_cursor: null });
+    const transport = globalThis.fetch;
+    const otherReads: URL[] = [];
+    let release: (() => void) | undefined;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await transport(input, init);
+      if (input instanceof Request) {
+        const url = new URL(input.url);
+        if (input.method === 'PUT' && url.pathname === app) {
+          await new Promise<void>((resolve) => { release = resolve; });
+        }
+        if (input.method === 'GET' && url.pathname === otherPath) {
+          otherReads.push(url);
+          if (Number(url.searchParams.get('minimum_revision')) > 1) {
+            return new Response(JSON.stringify(problem(409, 'Other application projection is below the requested minimum.', true)), {
+              status: 409, headers: { 'Content-Type': 'application/problem+json' },
+            });
+          }
+        }
+      }
+      return response;
+    });
+
+    // Act
+    saveButton(container)!.click();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    changeApplication(otherId);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Other application'));
+    const otherForm = container.querySelector('form[aria-label="Revise application"]')!;
+    const changed = { 'Application name': ' B unsaved name ', Purpose: ' B unsaved purpose ' };
+    for (const [label, value] of Object.entries({ ...draft, ...changed })) setField(otherForm, label, value);
+    release!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Assert
+    expect(otherReads.map((url) => url.searchParams.get('minimum_revision'))).toEqual([null]);
+    expect(api.bodies.filter((request) => request.method === 'PUT')).toHaveLength(1);
+    expect(container.querySelector('h1')?.textContent).toBe('Other application');
+    expect(container.querySelector('form[aria-label="Revise application"]')).toBe(otherForm);
+    expectDraft(otherForm, changed);
+    expect(saveButton(container)).toBeUndefined();
+  });
+
   it('ShouldDiscardPendingPreviewGivenApplicationContextChanged', async () => {
     // Arrange
     const otherId = '0190a1b2-0000-7000-8000-0000000000aa';
