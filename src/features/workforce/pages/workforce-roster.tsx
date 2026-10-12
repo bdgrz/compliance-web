@@ -13,7 +13,7 @@ import {
   Stack,
 } from '@askrjs/themes/components';
 
-import { organizationPath } from '../../tenants/tenants.js';
+import { currentTenant, organizationPath, type ActiveTenant } from '../../tenants/tenants.js';
 import { emptyTerms, RelationshipFields } from '../relationship-fields.js';
 import {
   formatDate,
@@ -84,14 +84,22 @@ function RecordRelationshipForm({ people, onRecorded }: { people: Person[]; onRe
   const [pending, setPending] = state(false);
   const [error, setError] = state<Error | null>(null);
   const [notice, setNotice] = state<string | null>(null);
+  const [savedRelationship, setSavedRelationship] = state<{
+    relationshipId: string;
+    organization: ActiveTenant;
+  } | null>(null);
 
   async function submit(event: Event) {
     event.preventDefault();
+    const organization = currentTenant();
     setError(null);
     setNotice(null);
+    setSavedRelationship(null);
     setPending(true);
     try {
-      await recordWorkRelationship(personId(), workerId(), terms());
+      const relationshipId = await recordWorkRelationship(personId(), workerId(), terms());
+      if (!organization || currentTenant() !== organization) return;
+      setSavedRelationship({ relationshipId, organization });
       setNotice(`Work relationship ${workerId().trim()} was recorded.`);
       setPersonId('');
       setWorkerId('');
@@ -104,6 +112,7 @@ function RecordRelationshipForm({ people, onRecorded }: { people: Person[]; onRe
     }
   }
 
+  const saved = savedRelationship();
   if (people.length === 0) {
     return <p>Record a person first; every work relationship belongs to a person on the roster.</p>;
   }
@@ -127,6 +136,9 @@ function RecordRelationshipForm({ people, onRecorded }: { people: Person[]; onRe
         <RelationshipFields terms={terms()} people={people} onChange={setTerms} showManager />
         <ActionError error={error()} noun="work relationship" />
         {notice() ? <p role="status">{notice()}</p> : null}
+        {saved && saved.organization === currentTenant() ? (
+          <a href={organizationPath(`/workforce/relationships/${saved.relationshipId}`)}>Open saved work relationship</a>
+        ) : null}
         <Button variant="primary" type="submit" disabled={pending()}>
           {pending() ? 'Recording…' : 'Record work relationship'}
         </Button>
