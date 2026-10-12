@@ -211,6 +211,145 @@ describe('workforce roster (R1-11a frontend #220)', () => {
     });
   });
 
+  it('ShouldOpenRecordedRelationshipGivenRosterProjectionLag', async () => {
+    // Arrange
+    const savedId = '0190a1b2-0000-7000-8000-0000000000c2';
+    peopleAnswer();
+    api.reply(`GET ${base}/work-relationships`, 200, { items: [relationship()], next_cursor: null });
+    api.reply(`POST ${base}/work-relationships`, 200, { relationship_id: savedId });
+    const container = mount(WorkforceRosterPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('W-100'));
+    const form = container.querySelectorAll('form')[1]! as HTMLFormElement;
+    setField(form, 'Person', alexId);
+    setField(form, 'Source worker ID', ' W-NEW ');
+    setField(form, 'Worker type', 'contractor');
+    setField(form, 'Start date', '2026-10-12');
+    setField(form, 'Department', ' Security ');
+    setField(form, 'Manager (restricted)', blairId);
+    api.reply(`GET ${base}/work-relationships`, 409, problem(409, 'Projection is behind.', true));
+
+    // Act
+    submit(form);
+    await vi.waitFor(() => expect(container.textContent).toContain('still being processed'));
+
+    // Assert
+    const link = form.querySelector<HTMLAnchorElement>(`a[href="/acme/workforce/relationships/${savedId}"]`);
+    expect(link?.textContent).toBe('Open saved work relationship');
+    expect(sent('POST', `${base}/work-relationships`)).toEqual({
+      person_id: alexId,
+      source_worker_id: 'W-NEW',
+      worker_type: 'contractor',
+      lifecycle_status: 'active',
+      start_date: '2026-10-12',
+      department: 'Security',
+      manager_person_id: blairId,
+    });
+    expect(field(form, 'Person').value).toBe('');
+    expect(field(form, 'Source worker ID').value).toBe('');
+    expect(field(form, 'Worker type').value).toBe('employee');
+    expect(field(form, 'Start date').value).toBe('');
+    expect(field(form, 'Department').value).toBe('');
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    // Follow the link's identity with a fresh detail mount; the existing read retry never recreates it.
+    const linkedId = new URL(link!.href).pathname.split('/').at(-1)!;
+    mounted.pop()!.cleanup();
+    api.reply(`GET ${base}/work-relationships/${savedId}`, 409, problem(409, 'Projection is behind.', true));
+    const detail = mount(() => <WorkRelationshipDetailPage relationshipId={linkedId} />);
+    await vi.waitFor(() => expect(detail.textContent).toContain('still being processed'));
+    api.reply(`GET ${base}/work-relationships/${savedId}`, 200, relationship({
+      relationship_id: savedId,
+      revision: 1,
+      source_worker_id: 'W-NEW',
+      worker_type: 'contractor',
+      start_date: '2026-10-12',
+      department: 'Security',
+      manager_person_id: blairId,
+      restricted_fields_redacted: false,
+    }));
+    [...detail.querySelectorAll('button')].find((button) => button.textContent === 'Try again')!.click();
+    await vi.waitFor(() => expect(detail.querySelector('h1')?.textContent).toBe('Worker W-NEW'));
+    await vi.waitFor(() => expect(detail.querySelector('.workforce-terms')?.textContent).toContain('Alex Rivera'));
+    expect(detail.textContent).toContain('revision 1');
+    expect(detail.textContent).toContain('Casey Lead');
+    expect(detail.querySelector('.workforce-terms')?.textContent).toContain('Contractor');
+    expect(detail.querySelector('.workforce-terms')?.textContent).toContain('Blair Chen');
+    expect(field(detail, 'Start date').value).toBe('2026-10-12');
+    expect(field(detail, 'Department').value).toBe('Security');
+    expect(api.bodies.filter((request) => request.method === 'GET' && request.path === `${base}/work-relationships/${savedId}`)).toHaveLength(2);
+    expect(api.bodies.filter((request) => request.method === 'POST' && request.path === `${base}/work-relationships`)).toHaveLength(1);
+    expect(api.bodies.some((request) => request.method === 'GET' && request.path === `${base}/work-relationships/W-NEW`)).toBe(false);
+  });
+
+  it('ShouldRetainEnteredRelationshipWithoutASavedLinkGivenCreateFailure', async () => {
+    // Arrange
+    peopleAnswer();
+    api.reply(`GET ${base}/work-relationships`, 200, { items: [], next_cursor: null });
+    api.reply(`POST ${base}/work-relationships`, 400, problem(400, 'Invalid relationship.'));
+    const container = mount(WorkforceRosterPage);
+    await vi.waitFor(() => expect(container.querySelectorAll('form')).toHaveLength(2));
+    const form = container.querySelectorAll('form')[1]! as HTMLFormElement;
+    setField(form, 'Person', alexId);
+    setField(form, 'Source worker ID', 'W-NEW');
+    setField(form, 'Start date', '2026-10-12');
+    setField(form, 'Department', 'Security');
+
+    // Act
+    submit(form);
+    await vi.waitFor(() => expect(form.querySelector('[role="alert"]')).not.toBeNull());
+
+    // Assert
+    expect(form.querySelector('a')).toBeNull();
+    expect(form.querySelector('[role="status"]')).toBeNull();
+    expect(field(form, 'Person').value).toBe(alexId);
+    expect(field(form, 'Source worker ID').value).toBe('W-NEW');
+    expect(field(form, 'Start date').value).toBe('2026-10-12');
+    expect(field(form, 'Department').value).toBe('Security');
+    expect(api.bodies.filter((request) => request.method === 'POST' && request.path === `${base}/work-relationships`)).toHaveLength(1);
+    expect(api.bodies.filter((request) => request.method === 'GET' && request.path === `${base}/work-relationships`)).toHaveLength(1);
+  });
+
+  it.each(['cleared', 'different'] as const)('ShouldNotExposePriorRelationshipGivenOrganization%sDuringCreate', async (context) => {
+    // Arrange
+    peopleAnswer();
+    api.reply(`GET ${base}/work-relationships`, 200, { items: [], next_cursor: null });
+    api.reply(`POST ${base}/work-relationships`, 200, { relationship_id: relationshipId });
+    const container = mount(WorkforceRosterPage);
+    await vi.waitFor(() => expect(container.querySelectorAll('form')).toHaveLength(2));
+    const form = container.querySelectorAll('form')[1]! as HTMLFormElement;
+    setField(form, 'Person', alexId);
+    setField(form, 'Source worker ID', 'W-NEW');
+    setField(form, 'Start date', '2026-10-12');
+    const transport = globalThis.fetch;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await transport(input, init);
+      if (input instanceof Request && input.method === 'POST') await pending;
+      return response;
+    });
+
+    // Act
+    submit(form);
+    await vi.waitFor(() => expect(api.bodies.filter((request) => request.method === 'POST')).toHaveLength(1));
+    clearActiveTenant();
+    if (context === 'different') {
+      const otherTenantId = '0190a1b2-0000-7000-8000-000000000002';
+      api.reply('/api/v1/tenant-slugs/other/mine', 200, { tenant_id: otherTenantId, current_slug: 'other', redirect: false });
+      api.reply('/api/v1/tenants/mine', 200, { items: [{ tenant_id: otherTenantId, name: 'Other Corp', slug: 'other' }], next_cursor: null });
+      expect((await resolveTenantRoute('other', { pathname: '/other/workforce', search: '', hash: '' })).kind).toBe('ready');
+    }
+    release();
+    await vi.waitFor(() => expect(form.querySelector('button')?.disabled).toBe(false));
+
+    // Assert
+    expect(form.querySelector('a')).toBeNull();
+    expect(form.querySelector('[role="status"]')).toBeNull();
+    expect(field(form, 'Source worker ID').value).toBe('W-NEW');
+    expect(api.bodies.filter((request) => request.method === 'POST')).toHaveLength(1);
+    expect(api.bodies.filter((request) => request.path.endsWith('/work-relationships') && request.method === 'GET')).toHaveLength(1);
+  });
+
   it('ShouldShowForbiddenGivenTheViewerCannotManageWorkforce', async () => {
     // Arrange
     api.reply(`GET ${base}/people`, 403, problem(403, 'Forbidden'));
