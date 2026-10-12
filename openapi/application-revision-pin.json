@@ -1,0 +1,82 @@
+{
+  "source_backend_head": "681ab29f20df1f69a316b148353d84a7c918f720",
+  "source_export": "backend-openapi-after-ab.json",
+  "whole_export_sha256": "899b9b8eb8a254279937a2ef45a211fb4162b3f10faf8f75faab8e4c60c29bc4",
+  "fragment": "application-revision.json",
+  "fragment_sha256": "2c355df3303315e9594828dfabe3bd7999d608a8760f6a70fdd3634c8507b6ef",
+  "operation_ids": [
+    "reviseApplication",
+    "previewApplicationChange"
+  ],
+  "generator": {
+    "node_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+    "node_version": "v24.18.0",
+    "cli_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+    "cli_version": "0.0.15",
+    "cli_entry_sha256": "e4e48710f67af1863c4eca24ccae70f34bf32064de17f96ee61fe9156fa5026a",
+    "command": [
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/lib/node_modules/@askrjs/cli/dist/cli.js",
+      "generate",
+      "/var/folders/dg/rh2n13nx6cqgwpb8lkkxsgy80000gn/T/compliance-autopilot-955-preview-21x1yvkc/application-revision.json",
+      "-o",
+      "/var/folders/dg/rh2n13nx6cqgwpb8lkkxsgy80000gn/T/compliance-autopilot-955-preview-21x1yvkc/task50-generated-application-revision",
+      "--ref-max-bytes",
+      "33554432",
+      "--json"
+    ],
+    "exit_code": 0,
+    "output_hashes": {
+      ".askr-generated.json": "e4e4ccd1ca7235ccb362a096035e1ff06764c24a98492af234693614c41d21ad",
+      "api.ts": "3390d864fb3b78fd98f87419ffe9796a81b85e4788b48530bc6b19fbbc2c22c3",
+      "index.ts": "697911d5953f5e5c52a854dee2a9467563e4c48aeb964561c1a191161185ff58",
+      "operations.ts": "156d0f9bad7c6bc843cabc830167ae2e805206c492f2ce4589f67bd0401d3423",
+      "schemas.ts": "a9084ee29f19b03df14b1348152e5c9c2ade3113592739a1a2f4637d924307c9"
+    },
+    "executed_at": "2026-10-12T01:34:12.753094+00:00"
+  },
+  "selective_merge": {
+    "operations.ts": {
+      "target_types": [
+        "ReviseApplicationPath",
+        "ReviseApplicationBody",
+        "ReviseApplicationResponse204",
+        "ReviseApplicationError_400",
+        "ReviseApplicationError_401",
+        "ReviseApplicationError_403",
+        "ReviseApplicationError_404",
+        "ReviseApplicationError_409",
+        "ReviseApplicationError_413",
+        "ReviseApplicationError_415",
+        "ReviseApplicationError_500",
+        "PreviewApplicationChangePath",
+        "PreviewApplicationChangeBody",
+        "PreviewApplicationChangeResponse200",
+        "PreviewApplicationChangeError_400",
+        "PreviewApplicationChangeError_401",
+        "PreviewApplicationChangeError_403",
+        "PreviewApplicationChangeError_404",
+        "PreviewApplicationChangeError_409",
+        "PreviewApplicationChangeError_413",
+        "PreviewApplicationChangeError_415",
+        "PreviewApplicationChangeError_500"
+      ],
+      "unrelated_bytes_preserved": true,
+      "changed": true
+    },
+    "schemas.ts": {
+      "target_types": [
+        "PortiaC166B2A6A50AB323EBE10D693B981A72966248C62D0DBCA17A9D1F8C2A0493E1"
+      ],
+      "unrelated_bytes_preserved": true,
+      "changed": false
+    },
+    "api.ts": {
+      "target_operations": [
+        "reviseApplication",
+        "previewApplicationChange"
+      ],
+      "unrelated_bytes_preserved": true
+    }
+  }
+}

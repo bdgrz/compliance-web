@@ -2963,6 +2963,9 @@ export type ReviseApplicationBody = {
   "classification"?: string | null;
   "system_owner_person_id"?: string;
   "access_owner_person_id"?: string;
+  "is_restricted"?: boolean;
+  "application_kind"?: string | null;
+  "criticality"?: string | null;
 };
 
 export type ReviseApplicationResponse204 = undefined;
@@ -3275,6 +3278,10 @@ export type PreviewApplicationChangeBody = {
   "purpose"?: string | null;
   "owner_reference"?: string | null;
   "classification"?: string | null;
+  "system_owner_person_id"?: string;
+  "access_owner_person_id"?: string;
+  "application_kind"?: string | null;
+  "criticality"?: string | null;
 };
 
 export type PreviewApplicationChangeResponse200 = PortiaC166B2A6A50AB323EBE10D693B981A72966248C62D0DBCA17A9D1F8C2A0493E1;

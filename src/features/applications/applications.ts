@@ -69,12 +69,19 @@ export interface ApplicationDeclarationContent extends ApplicationContent {
   criticality: string;
 }
 
+export interface ApplicationRevisionContent extends ApplicationContent {
+  applicationKind: string;
+  criticality: string;
+}
+
 export interface ApplicationDeclarationAttempt {
   tenantId: string;
   declarationKey: string;
 }
 
 export interface ChangePreview {
+  tenantId: string;
+  applicationId: string;
   applicationRevision: number;
   changeKind: string;
   changes: { field: string; before: string | null; after: string | null }[];
@@ -285,15 +292,23 @@ export async function declareApplication(content: ApplicationDeclarationContent,
   return result.data.application_id;
 }
 
+function revisionContentBody(content: ApplicationRevisionContent) {
+  return {
+    ...contentBody(content),
+    application_kind: content.applicationKind,
+    criticality: content.criticality,
+  };
+}
+
 export async function reviseApplication(
   applicationId: string,
   expectedRevision: number,
-  content: ApplicationContent
+  content: ApplicationRevisionContent
 ): Promise<void> {
   const tenantId = requireActiveTenantId();
   const result = await client.reviseApplication({
     params: { tenant_id: tenantId, application_id: applicationId },
-    body: { expected_revision: expectedRevision, ...contentBody(content) },
+    body: { expected_revision: expectedRevision, ...revisionContentBody(content) },
   });
   if (!result.ok) throw failure(result, 'save the application');
 }
@@ -301,7 +316,7 @@ export async function reviseApplication(
 export async function previewApplicationChange(
   applicationId: string,
   expectedRevision: number,
-  change: { kind: 'revise'; content: ApplicationContent } | { kind: 'retire' }
+  change: { kind: 'revise'; content: ApplicationRevisionContent } | { kind: 'retire' }
 ): Promise<ChangePreview> {
   const tenantId = requireActiveTenantId();
   const body =
@@ -309,10 +324,7 @@ export async function previewApplicationChange(
       ? {
           expected_application_revision: expectedRevision,
           change_kind: 'revise',
-          name: change.content.name,
-          purpose: change.content.purpose,
-          owner_reference: change.content.ownerReference,
-          classification: change.content.classification,
+          ...revisionContentBody(change.content),
         }
       : { expected_application_revision: expectedRevision, change_kind: 'retire' };
   const result = await client.previewApplicationChange({
@@ -323,6 +335,8 @@ export async function previewApplicationChange(
   const data = result.data;
   if (!data) throw new ApplicationRequestError('The change preview was empty.', null, false);
   return {
+    tenantId: data.tenant_id,
+    applicationId: data.application_id,
     applicationRevision: Number(data.application_revision),
     changeKind: data.change_kind,
     changes: present(data.changes),
