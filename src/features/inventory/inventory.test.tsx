@@ -284,6 +284,58 @@ describe('technology and information inventory (R1-12 frontend #228)', () => {
     expect(container.querySelector('.inventory-history li')?.textContent).toContain('retention RET-9');
   });
 
+  it('ShouldShowLocationChangesInComponentRevisionHistory', async () => {
+    // Arrange
+    inventoryAnswers();
+    const recorded = component(storeId, 'Orders DB', 'data_store');
+    const earlier = {
+      ...recorded,
+      content: { ...recorded.content, location_reference: 'North campus <rack A>' },
+      last_changed_by: { kind: 'member', id: 'm-earlier', display: 'Jordan Recorder' },
+    };
+    const current = {
+      ...earlier,
+      revision: 2,
+      content: { ...earlier.content, location_reference: 'South campus / rack B' },
+      last_changed_by: { kind: 'member', id: 'm-current', display: 'Sam Editor' },
+      last_changed_at: '2026-09-11T00:00:00Z',
+    };
+    const withoutLocation = component(appId, 'Orders repo', 'repository');
+    api.reply(`${base}/technology-components`, 200, { items: [withoutLocation, current], next_cursor: null });
+    api.reply(`${base}/technology-components/${storeId}/revisions`, 200, { items: [earlier, current], next_cursor: null });
+    api.reply(`${base}/technology-components/${appId}/revisions`, 200, { items: [withoutLocation], next_cursor: null });
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+    const records = [...container.querySelectorAll<HTMLElement>('.inventory-record')];
+    const currentRecord = records.find((row) => row.querySelector('strong')?.textContent === 'Orders DB')!;
+    const nullRecord = records.find((row) => row.querySelector('strong')?.textContent === 'Orders repo')!;
+
+    // Act
+    press(currentRecord, 'History of Orders DB');
+    press(nullRecord, 'History of Orders repo');
+    await vi.waitFor(() => expect(currentRecord.querySelectorAll('.inventory-history li')).toHaveLength(2));
+    await vi.waitFor(() => expect(nullRecord.querySelectorAll('.inventory-history li')).toHaveLength(1));
+
+    // Assert
+    const history = currentRecord.querySelectorAll('.inventory-history li');
+    expect(history[0]?.textContent).toContain('Revision 2 by Sam Editor');
+    expect(history[0]?.textContent).toContain('location South campus / rack B');
+    expect(history[0]?.textContent).not.toContain('North campus <rack A>');
+    expect(history[0]?.textContent).not.toContain('Jordan Recorder');
+    expect(history[1]?.textContent).toContain('Revision 1 by Jordan Recorder');
+    expect(history[1]?.textContent).toContain('location North campus <rack A>');
+    expect(history[1]?.textContent).not.toContain('South campus / rack B');
+    expect(history[1]?.textContent).not.toContain('Sam Editor');
+    expect(currentRecord.querySelector('p')?.textContent).toContain('location South campus / rack B');
+    expect(currentRecord.querySelector('p')?.textContent).not.toContain('North campus <rack A>');
+    expect(currentRecord.querySelector('a, rack')).toBeNull();
+    expect(nullRecord.querySelector('p')?.textContent).not.toContain('location');
+    expect(nullRecord.querySelector('.inventory-history li')?.textContent).not.toContain('location');
+    expect(nullRecord.textContent).not.toContain('null');
+    expect(api.requested).toContain(`${base}/technology-components/${storeId}/revisions`);
+    expect(api.requested).toContain(`${base}/technology-components/${appId}/revisions`);
+  });
+
   it('ShouldOfferRetryGivenProjectionLag', async () => {
     // Arrange
     inventoryAnswers();
