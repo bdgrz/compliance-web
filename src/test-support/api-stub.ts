@@ -30,8 +30,17 @@ export function stubApi() {
     const prefix = [...replies.entries()].find(
       ([key]) => key.endsWith('*') && `${method} ${url.pathname}`.startsWith(key.slice(0, -1))
     )?.[1];
+    const queryReply = [...replies.entries()].find(([key]) => {
+      const separator = key.indexOf(' ');
+      if (separator < 0 || key.slice(0, separator) !== method) return false;
+      const expected = key.slice(separator + 1);
+      if (!expected.includes('?') || expected.endsWith('*')) return false;
+      const expectedUrl = new URL(expected, 'http://app.test');
+      return expectedUrl.pathname === url.pathname &&
+        [...expectedUrl.searchParams].every(([name, value]) => url.searchParams.get(name) === value);
+    })?.[1];
     const match =
-      replies.get(`${method} ${url.pathname}`) ?? replies.get(url.pathname) ?? prefix ?? { status: 404 };
+      queryReply ?? replies.get(`${method} ${url.pathname}`) ?? replies.get(url.pathname) ?? prefix ?? { status: 404 };
     return new Response(match.body === undefined ? null : JSON.stringify(match.body), {
       status: match.status,
       headers: {
@@ -44,7 +53,7 @@ export function stubApi() {
     requested,
     requestUrls,
     bodies,
-    // `path` may be prefixed with a method, e.g. 'POST /api/v1/...', to answer one method only, and
+    // `path` may include a method and query, e.g. 'GET /api/v1/...?...', to answer one request;
     // a method-prefixed key ending in '*' answers every path that starts with it.
     reply(path: string, status: number, body?: unknown) {
       replies.set(path, { status, body });

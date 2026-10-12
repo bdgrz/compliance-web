@@ -28,7 +28,7 @@ function problem(status: number, detail: string, transient = false) {
   return { type: 'about:blank', title: 'Problem', status, detail, instance: '/', transient };
 }
 
-function application(id: string, name: string) {
+function application(id: string, name: string, overrides: Record<string, unknown> = {}) {
   return {
     tenant_id: tenantId,
     application_id: id,
@@ -50,6 +50,7 @@ function application(id: string, name: string) {
     access_owner_person_id: null,
     lifecycle: 'active',
     retirement: null,
+    ...overrides,
   };
 }
 
@@ -113,6 +114,12 @@ describe('application relationships (#27)', () => {
   it('ShouldAddRelationshipAgainstObservedRevisionGivenAnAuthorizedMember', async () => {
     // Arrange
     api.reply(`GET ${relationshipsPath}`, 200, relationshipPage([], 0));
+    const refreshed = relationshipPage([relationship({ relationship_type: 'replaces' })], 1);
+    api.reply(`GET ${relationshipsPath}?minimum_revision=1`, 200, refreshed);
+    api.reply(`GET ${base}/applications`, 200, {
+      items: [application(applicationId, 'Payroll'), application(targetId, 'Workday', { lifecycle: 'retired' })],
+      next_cursor: null,
+    });
     api.reply(`POST ${relationshipsPath}/*`, 200, {
       relationship_id: relationshipId,
       relationship_revision: 1,
@@ -137,15 +144,20 @@ describe('application relationships (#27)', () => {
     // Assert
     expect(api.bodies.find((request) => request.method === 'POST' && request.path.startsWith(relationshipPath))?.body)
       .toEqual({ expected_relationship_revision: 0, target_application_id: targetId, relationship_type: 'replaces' });
-    await vi.waitFor(() => expect(api.requestUrls.some((request) => {
+    await vi.waitFor(() => expect(container.textContent).toContain('Riley Admin'));
+    const refreshRequest = api.requestUrls.find((request) => {
       if (request.method !== 'GET' || new URL(request.url).pathname !== relationshipsPath) return false;
       return new URL(request.url).searchParams.get('minimum_revision') === '1';
-    })).toBe(true));
+    });
+    expect(refreshRequest).toBeDefined();
+    expect(refreshed.relationship_revision).toBeGreaterThanOrEqual(1);
   });
 
   it('ShouldRemoveRelationshipAgainstObservedRevisionGivenAnAuthorizedMember', async () => {
     // Arrange
     api.reply(`GET ${relationshipsPath}`, 200, relationshipPage([relationship()]));
+    const refreshed = relationshipPage([], 8);
+    api.reply(`GET ${relationshipsPath}?minimum_revision=8`, 200, refreshed);
     api.reply(`DELETE ${relationshipsPath}/${relationshipId}`, 200, {
       relationship_id: relationshipId,
       relationship_revision: 8,
@@ -164,7 +176,13 @@ describe('application relationships (#27)', () => {
     expect(removeRequest).toBeDefined();
     expect(new URL(removeRequest!.url).searchParams.get('expected_relationship_revision')).toBe('7');
     expect(api.bodies.find((request) => request.method === 'DELETE' && request.path === `${relationshipsPath}/${relationshipId}`)?.body).toBeUndefined();
-    await vi.waitFor(() => expect(api.requested.filter((path) => path === relationshipsPath).length).toBeGreaterThan(1));
+    await vi.waitFor(() => expect(container.textContent).toContain('No application relationships have been recorded.'));
+    const refreshRequest = api.requestUrls.find((request) => {
+      if (request.method !== 'GET' || new URL(request.url).pathname !== relationshipsPath) return false;
+      return new URL(request.url).searchParams.get('minimum_revision') === '8';
+    });
+    expect(refreshRequest).toBeDefined();
+    expect(refreshed.relationship_revision).toBeGreaterThanOrEqual(8);
   });
 
   it('ShouldExplainForbiddenGivenTheMemberCannotManageRelationships', async () => {
@@ -179,6 +197,43 @@ describe('application relationships (#27)', () => {
     expect(container.textContent).toContain('do not have permission');
     expect(container.querySelector('form[aria-label="Add application relationship"]')).toBeNull();
     expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldRetryRelatedApplicationLoadingGivenTheCandidateListFails', async () => {
+    // Arrange
+    api.reply(`GET ${relationshipsPath}`, 200, relationshipPage([relationship()]));
+    api.reply(`GET ${base}/applications`, 500, problem(500, 'The application list is temporarily unavailable.'));
+
+    // Act
+    const container = mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Related applications could not be loaded.'));
+    expect(container.textContent).toContain('Riley Admin');
+    expect(container.textContent).not.toContain('No other visible applications are available to link.');
+    expect(container.querySelector('form[aria-label="Add application relationship"]')).toBeNull();
+    api.reply(`GET ${base}/applications`, 200, {
+      items: [application(applicationId, 'Payroll'), application(targetId, 'Workday', { lifecycle: 'retired' })],
+      next_cursor: null,
+    });
+    [...container.querySelectorAll('button')].find((button) => button.textContent === 'Retry related applications')!.click();
+    await vi.waitFor(() => expect(container.querySelector(`select[aria-label="Related application"] option[value="${targetId}"]`)).not.toBeNull());
+
+    // Assert
+    expect(container.querySelector('form[aria-label="Add application relationship"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Related applications could not be loaded.');
+  });
+
+  it('ShouldKeepRelationshipsReadOnlyGivenTheSourceApplicationIsRetired', async () => {
+    // Arrange
+    api.reply(`GET ${applicationPath}`, 200, application(applicationId, 'Payroll', { lifecycle: 'retired' }));
+    api.reply(`GET ${relationshipsPath}`, 200, relationshipPage([relationship()]));
+
+    // Act
+    const container = mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Riley Admin'));
+
+    // Assert
+    expect(container.querySelector('form[aria-label="Add application relationship"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Remove relationship')).toBe(false);
   });
 
   it('ShouldOfferRefreshGivenAddingAgainstAStaleRelationshipRevision', async () => {

@@ -28,7 +28,6 @@ import {
   reviseApplication,
   type Application,
   type ApplicationRevisionContent,
-  type ApplicationSummary,
   type ChangePreview,
 } from '../applications.js';
 import { listPeople, type Person } from '../../workforce/workforce.js';
@@ -363,7 +362,7 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
   const instances = resource(() => listSystemInstances(applicationId), [applicationId, version()]);
   const history = resource(() => listApplicationRevisions(applicationId), [applicationId, version()]);
   const people = resource(() => listPeople().catch(() => [] as Person[]), []);
-  const others = resource(() => listApplications().catch(() => [] as ApplicationSummary[]), [version()]);
+  const others = resource(() => listApplications(), [version()]);
   const back = <a href={organizationPath('/applications')}>Back to applications</a>;
   const reload = (revision?: number) => {
     if (revision !== undefined) setMinimumRevision(revision);
@@ -485,7 +484,9 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
         <ApplicationRelationshipsCard
           key={`${currentTenant()?.tenantId}:${applicationId}`}
           applicationId={applicationId}
-          applications={others.value ?? []}
+          applications={others.value}
+          applicationsError={others.error}
+          onRetryApplications={() => others.refresh()}
           canManage={!retired && current.applicationId === applicationId}
         />
         {retired || current.applicationId !== applicationId ? null : <ReviseCard

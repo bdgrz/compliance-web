@@ -51,10 +51,14 @@ function isConflict(error: Error | null | undefined): boolean {
 export function ApplicationRelationshipsCard({
   applicationId,
   applications,
+  applicationsError,
+  onRetryApplications,
   canManage,
 }: {
   applicationId: string;
-  applications: ApplicationSummary[];
+  applications: ApplicationSummary[] | null | undefined;
+  applicationsError: Error | null | undefined;
+  onRetryApplications: () => void;
   canManage: boolean;
 }) {
   const [version, setVersion] = state(0);
@@ -70,10 +74,9 @@ export function ApplicationRelationshipsCard({
     [applicationId, minimumRevision(), version()]
   );
   const page = relationships.value;
-  const candidates = applications.filter(
-    (application) => application.applicationId !== applicationId && application.lifecycle === 'active'
-  );
-  const names = new Map(applications.map((application) => [application.applicationId, application.name]));
+  const visibleApplications = applications ?? [];
+  const candidates = visibleApplications.filter((application) => application.applicationId !== applicationId);
+  const names = new Map(visibleApplications.map((application) => [application.applicationId, application.name]));
   const denied = isForbidden(relationships.error) || isForbidden(actionError());
 
   function refresh(minimum?: number) {
@@ -219,10 +222,21 @@ export function ApplicationRelationshipsCard({
               ) : (
                 <p>No application relationships have been recorded.</p>
               )}
-              {canManage && candidates.length === 0 ? (
-                <p>No other active applications are available to link.</p>
+              {canManage && applicationsError ? (
+                <Stack gap="sm">
+                  <p role="alert">Related applications could not be loaded. {applicationsError.message}</p>
+                  <Button variant="secondary" onPress={onRetryApplications}>
+                    Retry related applications
+                  </Button>
+                </Stack>
               ) : null}
-              {canManage ? (
+              {canManage && !applicationsError && applications == null ? (
+                <Spinner label="Loading related applications" />
+              ) : null}
+              {canManage && applications != null && !applicationsError && candidates.length === 0 ? (
+                <p>No other visible applications are available to link.</p>
+              ) : null}
+              {canManage && applications != null && !applicationsError ? (
                 <form aria-label="Add application relationship" onSubmit={(event: Event) => void add(event)}>
                   <Stack gap="sm">
                     <label className="registration-field">

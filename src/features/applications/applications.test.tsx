@@ -72,6 +72,7 @@ const instance = {
 
 function detailAnswers(revision = 2) {
   api.reply(`GET ${app}`, 200, applicationBody(revision));
+  api.reply(`GET ${base}/applications`, 200, { items: [applicationBody()], next_cursor: null });
   api.reply(`GET ${app}/relationships`, 200, { relationship_revision: 0, items: [], next_cursor: null });
   api.reply(`${app}/system-instances`, 200, { items: [instance], next_cursor: null });
   api.reply(`${app}/revisions`, 200, {
