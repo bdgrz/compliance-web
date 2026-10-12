@@ -639,6 +639,7 @@ function componentSummary(c: TechnologyComponent, owner: (id: string) => string)
     `owner ${owner(c.ownerPersonId)}`,
     vocabularyLabel(c.lifecycle),
     c.environmentReference ? `environment ${c.environmentReference}` : null,
+    c.locationReference !== null ? `location ${c.locationReference}` : null,
     c.endpointCount !== null ? `${c.endpointCount} endpoints via ${c.managementSource}` : null,
     `revision ${c.revision}`,
     c.sourceKind === 'manual' ? 'manually recorded' : `source ${c.sourceKind}`,
