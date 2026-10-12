@@ -263,6 +263,84 @@ describe('technology and information inventory (R1-12 frontend #228)', () => {
     await vi.waitFor(() => expect(form.textContent).toContain('Record an approved exception reference'));
   });
 
+  it('ShouldPreserveSensitivityAndHiddenAssetReferenceGivenAnUnencryptedFlowEdit', async () => {
+    // Arrange
+    inventoryAnswers();
+    const hiddenFlow = {
+      ...flow,
+      content: {
+        ...flow.content,
+        encrypted_at_rest: false,
+        exception_reference: null,
+        classification: 'restricted',
+      },
+    };
+    api.reply(`${base}/information-assets`, 200, { items: [], next_cursor: null });
+    api.reply(`${base}/data-flows`, 200, { items: [hiddenFlow], next_cursor: null });
+    api.reply(`PUT ${base}/data-flows/${flowId}`, 204);
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.textContent).toContain('Persist orders'));
+    press(container, 'Revise Persist orders');
+    const form = container.querySelector('form[aria-label="Revise data flow Persist orders"]')!;
+
+    // Act
+    fill(form, 'Purpose', 'Persist orders for fulfillment');
+
+    // Assert
+    expect(form.textContent).toContain('Record an approved exception reference');
+    const exceptionLabel = [...form.querySelectorAll('label')].find((label) =>
+      label.textContent?.startsWith('Exception reference')
+    );
+    const exceptionInput = exceptionLabel?.querySelector('input') as HTMLInputElement | null;
+    expect(exceptionLabel?.textContent).toBe('Exception reference');
+    expect(exceptionInput?.required).toBe(true);
+    expect(container.textContent).not.toContain(assetId);
+    expect(api.requested).not.toContain(`${base}/information-assets/${assetId}`);
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    // Save the unrelated edit and verify the server-returned reference remains intact.
+    fill(form, 'Exception reference', 'EX-42');
+    submit(form);
+    await vi.waitFor(() => expect(form.querySelector('[role="status"]')).not.toBeNull());
+    expect(api.bodies.find((b) => b.method === 'PUT' && b.path === `${base}/data-flows/${flowId}`)?.body).toMatchObject({
+      expected_revision: 2,
+      information_asset_ids: [assetId],
+      purpose: 'Persist orders for fulfillment',
+      exception_reference: 'EX-42',
+    });
+  });
+
+  it('ShouldClearSensitiveWarningGivenTheLastVisibleSensitiveAssetIsRemovedFromAFlow', async () => {
+    // Arrange
+    inventoryAnswers();
+    const unencryptedFlow = { ...flow, content: { ...flow.content, encrypted_at_rest: false } };
+    api.reply(`${base}/data-flows`, 200, { items: [unencryptedFlow], next_cursor: null });
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.textContent).toContain('Persist orders'));
+    press(container, 'Revise Persist orders');
+    const form = container.querySelector('form[aria-label="Revise data flow Persist orders"]')!;
+    await vi.waitFor(() => expect(form.textContent).toContain('Record an approved exception reference'));
+
+    // Act
+    const assetBox = [...form.querySelectorAll('label')]
+      .find((label) => label.textContent?.includes('Customer records'))!
+      .querySelector('input') as HTMLInputElement;
+    assetBox.checked = false;
+    assetBox.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Assert
+    await vi.waitFor(() => expect(form.textContent).not.toContain('Record an approved exception reference'));
+    const exceptionLabel = [...form.querySelectorAll('label')].find((label) =>
+      label.textContent?.startsWith('Exception reference')
+    );
+    expect(exceptionLabel?.textContent).toBe('Exception reference (optional)');
+    expect((exceptionLabel?.querySelector('input') as HTMLInputElement | null)?.required).toBe(false);
+  });
+
   it('ShouldShowRevisionHistoryForAnAsset', async () => {
     // Arrange
     inventoryAnswers();
