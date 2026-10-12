@@ -420,7 +420,12 @@ function FlowForm({
   const set = (patch: Partial<FlowContent>) => setContent({ ...content(), ...patch });
   const c = content();
   const carried = assets.filter((a) => c.informationAssetIds.includes(a.informationAssetId));
-  const sensitive = carried.some((a) => a.classification === 'confidential' || a.classification === 'restricted');
+  const hasHiddenLinkedAsset = c.informationAssetIds.some(
+    (id) => !assets.some((asset) => asset.informationAssetId === id)
+  );
+  const sensitive =
+    carried.some((a) => a.classification === 'confidential' || a.classification === 'restricted') ||
+    (hasHiddenLinkedAsset && (existing?.classification === 'confidential' || existing?.classification === 'restricted'));
   const needsException = sensitive && !(c.encryptedInTransit && c.encryptedAtRest);
   function save(event: Event) {
     const cleaned = {
@@ -504,7 +509,12 @@ function FlowForm({
             reference.
           </p>
         ) : null}
-        <Text label="Exception reference (optional)" value={c.exceptionReference} required={needsException} onInput={(exceptionReference) => set({ exceptionReference })} />
+        <Text
+          label={`Exception reference${needsException ? '' : ' (optional)'}`}
+          value={c.exceptionReference}
+          required={needsException}
+          onInput={(exceptionReference) => set({ exceptionReference })}
+        />
         <Text label="Effective from" type="date" value={c.effectiveFrom} required onInput={(effectiveFrom) => set({ effectiveFrom })} />
         <Choice
           label="Owner"
