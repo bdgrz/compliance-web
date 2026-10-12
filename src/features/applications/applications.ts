@@ -1,4 +1,9 @@
 import { createApiClient } from '../../api-client/index.js';
+import type {
+  AddApplicationRelationshipResponse200,
+  ListApplicationRelationshipsResponse200,
+  RemoveApplicationRelationshipResponse200,
+} from '../../api-client/operations.js';
 import { requireActiveTenantId } from '../tenants/tenants.js';
 
 const client = createApiClient();
@@ -53,6 +58,28 @@ export interface SystemInstance {
   declaredAt: string;
   lifecycle: string;
   retirement: Retirement | null;
+}
+
+export type ApplicationRelationshipType = 'depends_on' | 'replaces';
+
+export interface ApplicationRelationship {
+  relationshipId: string;
+  targetApplicationId: string;
+  relationshipType: string;
+  actorMemberId: string;
+  actorDisplay: string;
+  changedAt: string;
+}
+
+export interface ApplicationRelationshipPage {
+  relationshipRevision: number;
+  items: ApplicationRelationship[];
+}
+
+export interface ApplicationRelationshipChange {
+  relationshipId: string;
+  relationshipRevision: number;
+  state: string;
 }
 
 export interface ApplicationContent {
@@ -421,6 +448,95 @@ export async function listSystemInstances(applicationId: string): Promise<System
     cursor = result.data?.next_cursor ?? undefined;
   } while (cursor !== undefined);
   return instances;
+}
+
+export async function listApplicationRelationships(
+  applicationId: string,
+  minimumRevision?: number
+): Promise<ApplicationRelationshipPage> {
+  const tenantId = requireActiveTenantId();
+  const items: ApplicationRelationship[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  let relationshipRevision: number | undefined;
+  do {
+    const result = await client.listApplicationRelationships({
+      params: { tenant_id: tenantId, application_id: applicationId },
+      query: { limit: 200, cursor, minimum_revision: minimumRevision },
+    });
+    if (!result.ok) throw failure(result, 'load application relationships');
+    const data = result.data as ListApplicationRelationshipsResponse200 | null;
+    if (!data) throw new ApplicationRequestError('Application relationships could not be loaded.', null, false);
+    const pageRevision = Number(data.relationship_revision);
+    if (relationshipRevision !== undefined && relationshipRevision !== pageRevision) {
+      throw new ApplicationRequestError(
+        'Application relationships changed while loading. Refresh the list and try again.',
+        409,
+        true
+      );
+    }
+    items.push(...present(data.items).map((item) => ({
+      relationshipId: item.relationship_id,
+      targetApplicationId: item.target_application_id,
+      relationshipType: item.relationship_type,
+      actorMemberId: item.actor_member_id,
+      actorDisplay: item.actor_display,
+      changedAt: item.changed_at,
+    })));
+    relationshipRevision = pageRevision;
+    cursor = data.next_cursor ?? undefined;
+    if (cursor && seenCursors.has(cursor)) {
+      throw new ApplicationRequestError('The application relationship list could not be paged.', null, false);
+    }
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor !== undefined);
+  return { relationshipRevision: relationshipRevision ?? 0, items };
+}
+
+export async function addApplicationRelationship(
+  applicationId: string,
+  relationshipId: string,
+  expectedRelationshipRevision: number,
+  targetApplicationId: string,
+  relationshipType: ApplicationRelationshipType
+): Promise<ApplicationRelationshipChange> {
+  const tenantId = requireActiveTenantId();
+  const result = await client.addApplicationRelationship({
+    params: { tenant_id: tenantId, application_id: applicationId, relationship_id: relationshipId },
+    body: {
+      expected_relationship_revision: expectedRelationshipRevision,
+      target_application_id: targetApplicationId,
+      relationship_type: relationshipType,
+    },
+  });
+  if (!result.ok) throw failure(result, 'add application relationships');
+  const data = result.data as AddApplicationRelationshipResponse200 | null;
+  if (!data) throw new ApplicationRequestError('The application relationship was not added.', null, false);
+  return {
+    relationshipId: data.relationship_id,
+    relationshipRevision: Number(data.relationship_revision),
+    state: data.state,
+  };
+}
+
+export async function removeApplicationRelationship(
+  applicationId: string,
+  relationshipId: string,
+  expectedRelationshipRevision: number
+): Promise<ApplicationRelationshipChange> {
+  const tenantId = requireActiveTenantId();
+  const result = await client.removeApplicationRelationship({
+    params: { tenant_id: tenantId, application_id: applicationId, relationship_id: relationshipId },
+    query: { expected_relationship_revision: expectedRelationshipRevision },
+  });
+  if (!result.ok) throw failure(result, 'remove application relationships');
+  const data = result.data as RemoveApplicationRelationshipResponse200 | null;
+  if (!data) throw new ApplicationRequestError('The application relationship was not removed.', null, false);
+  return {
+    relationshipId: data.relationship_id,
+    relationshipRevision: Number(data.relationship_revision),
+    state: data.state,
+  };
 }
 
 export async function declareSystemInstance(

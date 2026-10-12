@@ -16,6 +16,7 @@ class SameOriginRequest extends NativeRequest {
 export function stubApi() {
   const replies = new Map<string, Reply>();
   const requested: string[] = [];
+  const requestUrls: { method: string; url: string }[] = [];
   const bodies: { method: string; path: string; body: unknown }[] = [];
   vi.stubGlobal('Request', SameOriginRequest);
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -23,6 +24,7 @@ export function stubApi() {
     const url = new URL(request ? request.url : String(input), 'http://app.test');
     const method = (request?.method ?? init?.method ?? 'GET').toUpperCase();
     requested.push(url.pathname);
+    requestUrls.push({ method, url: url.toString() });
     const text = request ? await request.clone().text() : typeof init?.body === 'string' ? init.body : '';
     bodies.push({ method, path: url.pathname, body: text ? JSON.parse(text) : undefined });
     const prefix = [...replies.entries()].find(
@@ -40,6 +42,7 @@ export function stubApi() {
 
   return {
     requested,
+    requestUrls,
     bodies,
     // `path` may be prefixed with a method, e.g. 'POST /api/v1/...', to answer one method only, and
     // a method-prefixed key ending in '*' answers every path that starts with it.

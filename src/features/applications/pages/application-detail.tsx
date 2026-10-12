@@ -45,6 +45,7 @@ function OwnerName({ personId, names }: { personId: string | null; names: Map<st
 import { AccessReviewScopePanel } from '../components/access-review-scope-panel.js';
 import { ApplicationFields, cleanRevision, revisionProblem } from '../components/application-fields.js';
 import { ChangePreviewView } from '../components/change-preview.js';
+import { ApplicationRelationshipsCard } from '../components/application-relationships.js';
 import { messageFor, startOfDay, today } from '../components/messages.js';
 
 function contentOf(application: Application): ApplicationRevisionContent {
@@ -481,6 +482,12 @@ export function ApplicationDetailPage({ applicationId }: { applicationId: string
             ) : null}
           </CardContent>
         </Card>
+        <ApplicationRelationshipsCard
+          key={`${currentTenant()?.tenantId}:${applicationId}`}
+          applicationId={applicationId}
+          applications={others.value ?? []}
+          canManage={!retired && current.applicationId === applicationId}
+        />
         {retired || current.applicationId !== applicationId ? null : <ReviseCard
           key={`${currentTenant()?.tenantId}:${applicationId}:${current.revision}`}
           application={current} onSaved={(revision) => reload(revision)} />}
