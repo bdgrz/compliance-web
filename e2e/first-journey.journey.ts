@@ -15,6 +15,7 @@ import {
   type JourneyParticipant,
   type JourneyStepName,
 } from '../src/test-support/first-journey-progress.js';
+import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
 
 type MemberRosterPage = NonNullable<ListTenantMembersResponse200>;
 type TenantResponse = NonNullable<RegisterTenantResponse200>;
@@ -59,11 +60,25 @@ async function checkpoint(page: Page, step: JourneyStepName): Promise<void> {
 async function consumeMailboxCode(
   delivery: 'email_verification' | 'tenant_invitation',
   email: string,
+  scopeId: string,
   signal: AbortSignal
 ): Promise<string> {
   if (!mailboxSocket) {
     throw new Error('The private E2E mailbox socket is not configured.');
   }
+
+  const request =
+    delivery === 'tenant_invitation'
+      ? createMailboxConsumeRequest({
+          delivery,
+          email,
+          tenantId: scopeId,
+        })
+      : createMailboxConsumeRequest({
+          delivery,
+          email,
+          userId: scopeId,
+        });
 
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(mailboxSocket);
@@ -72,7 +87,7 @@ async function consumeMailboxCode(
     const timeout = setTimeout(() => {
       socket.destroy();
       fail(new Error(`Timed out waiting for ${delivery} delivery.`));
-    }, 65_000);
+    }, 35_000);
 
     const finish = (action: () => void) => {
       if (settled) return;
@@ -93,14 +108,7 @@ async function consumeMailboxCode(
 
     socket.setEncoding('utf8');
     socket.on('connect', () => {
-      socket.write(
-        `${JSON.stringify({
-          op: 'consume',
-          delivery,
-          email,
-          timeout_ms: 60_000,
-        })}\n`
-      );
+      socket.write(`${JSON.stringify(request)}\n`);
     });
     socket.on('data', (chunk: string) => {
       buffered += chunk;
@@ -138,12 +146,13 @@ async function performWhileConsuming(
   page: Page,
   delivery: 'email_verification' | 'tenant_invitation',
   email: string,
+  scopeId: string,
   waitingStep: JourneyStepName,
   deliveredStep: JourneyStepName,
   action: () => Promise<void>
 ): Promise<string> {
   const controller = new AbortController();
-  const code = consumeMailboxCode(delivery, email, controller.signal);
+  const code = consumeMailboxCode(delivery, email, scopeId, controller.signal);
   try {
     await action();
     await checkpoint(page, waitingStep);
@@ -164,6 +173,21 @@ async function verifyEmail(
   email: string,
   participant: JourneyParticipant
 ): Promise<void> {
+  const session = await page.evaluate(async () => {
+    const response = await fetch('/auth/session', {
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+    });
+    const body = response.ok
+      ? ((await response.json()) as { id?: unknown } | null)
+      : null;
+    return { status: response.status, id: body?.id };
+  });
+  expect(session.status).toBe(200);
+  if (typeof session.id !== 'string' || session.id.trim().length === 0) {
+    throw new Error('The current browser session has no user identifier.');
+  }
+
   await checkpoint(page, `${participant} verification form requested`);
   await expect(
     page.getByRole('button', { name: 'Send verification code' })
@@ -174,6 +198,7 @@ async function verifyEmail(
     page,
     'email_verification',
     email,
+    session.id,
     `${participant} verification challenge accepted; waiting for delivery`,
     `${participant} verification challenge delivered`,
     async () => {
@@ -431,6 +456,7 @@ async function grantOrganizationAdmin(
 
 async function inviteMember(
   page: Page,
+  tenantId: string,
   slug: string,
   email: string,
   role: 'compliance_participation' | 'tenant_administration',
@@ -448,6 +474,7 @@ async function inviteMember(
     page,
     'tenant_invitation',
     email,
+    tenantId,
     `${participant} invitation accepted; waiting for delivery`,
     `${participant} invitation delivered`,
     async () => {
@@ -660,6 +687,7 @@ test('first organization admin provisions a scoped team journey and reassignment
 
     const adminInvitation = await inviteMember(
       founder,
+      tenant.tenant_id,
       slug,
       adminEmail,
       'tenant_administration',
@@ -693,6 +721,7 @@ test('first organization admin provisions a scoped team journey and reassignment
 
     const contributorInvitation = await inviteMember(
       founder,
+      tenant.tenant_id,
       slug,
       contributorEmail,
       'compliance_participation',
