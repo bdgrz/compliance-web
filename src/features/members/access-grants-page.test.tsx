@@ -90,6 +90,36 @@ describe('organization access grants (R1-04b frontend #187)', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
+  it('ShouldShowRetryAndKeepGrantRowsWhenDisplayCatalogsFail', async () => {
+    // Arrange
+    catalog();
+    grants(grant('g1', { principal: { kind: 'team', id: teamId }, scope: { kind: 'program', id: programId } }));
+    api.reply(`${base}/roles`, 503, { detail: 'Role names are temporarily unavailable.' });
+    api.reply(`${base}/teams`, 503, { detail: 'Team names are temporarily unavailable.' });
+    api.reply(`${base}/programs`, 503, { detail: 'Program names are temporarily unavailable.' });
+    const container = mount(AccessGrantsPage);
+    await vi.waitFor(() => expect(container.querySelectorAll('tbody tr')).toHaveLength(1));
+
+    // Act
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(container.querySelector('tbody')?.textContent).toContain(teamId.slice(0, 8));
+    catalog();
+    [...container.querySelectorAll('button')].find((button) => button.textContent === 'Try again')!.click();
+
+    // Assert
+    await vi.waitFor(() => {
+      const row = container.querySelector('tbody tr')?.textContent ?? '';
+      expect(row).toContain('Team Security');
+      expect(row).toContain('Compliance Lead');
+      expect(row).toContain('Program: SOC 2 2026');
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+    });
+    expect(api.requested.filter((path) => path === `${base}/roles`).length).toBeGreaterThanOrEqual(2);
+    expect(api.requested.filter((path) => path === `${base}/teams`).length).toBeGreaterThanOrEqual(2);
+    expect(api.requested.filter((path) => path === `${base}/programs`).length).toBeGreaterThanOrEqual(2);
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
   it('ShouldShowRevokedAndExpiredGrantsOnRequest', async () => {
     // Arrange
     catalog();

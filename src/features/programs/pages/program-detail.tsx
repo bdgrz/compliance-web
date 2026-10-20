@@ -111,45 +111,20 @@ function PlanEditor({ program, onSaved }: { program: Program; onSaved: () => voi
   );
 }
 
-export function ProgramDetailPage({ programId }: { programId: string }) {
-  const [version, setVersion] = state(0);
-  const program = resource(() => getProgram(programId), [programId, version()]);
-  const setupWork = resource(() => getSetupWork(programId), [programId, version()]);
-  const history = resource(() => listProgramRevisions(programId), [programId, version()]);
+function AuthorizedProgramDetails({
+  programId,
+  current,
+  version,
+  onChanged,
+}: {
+  programId: string;
+  current: Program;
+  version: number;
+  onChanged: () => void;
+}) {
+  const setupWork = resource(() => getSetupWork(programId), [programId, version]);
+  const history = resource(() => listProgramRevisions(programId), [programId, version]);
   const back = <a href={organizationPath('/programs')}>Back to programs</a>;
-
-  if (program.pending && !program.value) {
-    return (
-      <Page>
-        <Spinner label="Loading program" />
-      </Page>
-    );
-  }
-
-  if (program.error) {
-    const error = program.error;
-    const status = error instanceof ProgramRequestError ? error.status : null;
-    return (
-      <Page>
-        <EmptyState
-          title={status === 403 ? 'This program is not available to you' : status === 404 ? 'Program not found' : 'Program could not be loaded'}
-          titleAs="h1"
-          description={error.message}
-          action={
-            status === 403 || status === 404 ? (
-              back
-            ) : (
-              <Button variant="primary" onPress={() => program.refresh()}>
-                Try again
-              </Button>
-            )
-          }
-        />
-      </Page>
-    );
-  }
-
-  const current = program.value!;
   const work = setupWork.value ?? [];
 
   return (
@@ -199,7 +174,7 @@ export function ProgramDetailPage({ programId }: { programId: string }) {
             )}
           </CardContent>
         </Card>
-        <CriteriaCard program={current} onChanged={() => setVersion(version() + 1)} />
+        <CriteriaCard program={current} onChanged={onChanged} />
         <CoverageCard program={current} />
         <Card>
           <CardHeader>
@@ -224,7 +199,7 @@ export function ProgramDetailPage({ programId }: { programId: string }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <PlanEditor program={current} onSaved={() => setVersion(version() + 1)} />
+            <PlanEditor program={current} onSaved={onChanged} />
           </CardContent>
         </Card>
         <Card>
@@ -258,5 +233,51 @@ export function ProgramDetailPage({ programId }: { programId: string }) {
         </Card>
       </Stack>
     </Page>
+  );
+}
+
+export function ProgramDetailPage({ programId }: { programId: string }) {
+  const [version, setVersion] = state(0);
+  const program = resource(() => getProgram(programId), [programId, version()]);
+  const back = <a href={organizationPath('/programs')}>Back to programs</a>;
+
+  if (program.pending && !program.value) {
+    return (
+      <Page>
+        <Spinner label="Loading program" />
+      </Page>
+    );
+  }
+
+  if (program.error) {
+    const error = program.error;
+    const status = error instanceof ProgramRequestError ? error.status : null;
+    return (
+      <Page>
+        <EmptyState
+          title={status === 403 ? 'This program is not available to you' : status === 404 ? 'Program not found' : 'Program could not be loaded'}
+          titleAs="h1"
+          description={error.message}
+          action={
+            status === 403 || status === 404 ? (
+              back
+            ) : (
+              <Button variant="primary" onPress={() => program.refresh()}>
+                Try again
+              </Button>
+            )
+          }
+        />
+      </Page>
+    );
+  }
+
+  return (
+    <AuthorizedProgramDetails
+      programId={programId}
+      current={program.value!}
+      version={version()}
+      onChanged={() => setVersion(version() + 1)}
+    />
   );
 }

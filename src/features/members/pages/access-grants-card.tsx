@@ -7,6 +7,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Spinner,
   Stack,
 } from '@askrjs/themes/components';
 
@@ -130,7 +131,9 @@ export function AccessGrantsCard({ access, onChanged }: { access: MemberAccess; 
               })}
             </ul>
           )}
-          {roles.error || scopes.error ? (
+          {roles.pending || scopes.pending ? (
+            <Spinner label="Loading access grant options" />
+          ) : roles.error || scopes.error ? (
             <Stack gap="sm">
               <p role="alert">{(roles.error ?? scopes.error)!.message}</p>
               <Button

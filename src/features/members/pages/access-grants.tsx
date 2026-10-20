@@ -14,15 +14,14 @@ import {
   Stack,
 } from '@askrjs/themes/components';
 
-import { listRoles, type RoleSummary } from '../../roles/roles.js';
-import { listTeams, type TeamSummary } from '../../teams/teams.js';
+import { listRoles } from '../../roles/roles.js';
+import { listTeams } from '../../teams/teams.js';
 import {
   listAccessGrants,
   listGrantScopes,
   MemberRequestError,
   revokeAccessGrant,
   type AccessGrantRecord,
-  type ScopeOption,
 } from '../members.js';
 import { scopeLabel } from './access-grants-card.js';
 
@@ -52,9 +51,9 @@ export function AccessGrantsPage() {
   const [actionError, setActionError] = state<string | null>(null);
   const [notice, setNotice] = state<string | null>(null);
   const grants = resource(() => listAccessGrants(), [version()]);
-  const roles = resource(() => listRoles().catch(() => [] as RoleSummary[]), []);
-  const teams = resource(() => listTeams().catch(() => [] as TeamSummary[]), []);
-  const scopes = resource(() => listGrantScopes().catch(() => [] as ScopeOption[]), []);
+  const roles = resource(() => listRoles(), []);
+  const teams = resource(() => listTeams(), []);
+  const scopes = resource(() => listGrantScopes(), []);
 
   if (grants.error instanceof MemberRequestError && grants.error.status === 403) {
     return (
@@ -70,6 +69,8 @@ export function AccessGrantsPage() {
 
   const roleNames = new Map((roles.value ?? []).map((role) => [role.roleId, role.name]));
   const teamNames = new Map((teams.value ?? []).map((team) => [team.teamId, team.name]));
+  const metadataError = roles.error ?? teams.error ?? scopes.error;
+  const metadataPending = roles.pending || teams.pending || scopes.pending;
   const all = grants.value ?? [];
   const items = filter() === 'all' ? all : all.filter((grant) => ['active', 'scheduled'].includes(recordStatus(grant)));
 
@@ -111,6 +112,26 @@ export function AccessGrantsPage() {
           <Stack gap="sm">
             {actionError() ? <p role="alert">{actionError()}</p> : null}
             {notice() ? <p role="status">{notice()}</p> : null}
+            {metadataError ? (
+              <Stack gap="sm">
+                <p role="alert">
+                  {metadataError.message} Some role, team, or program names may appear as identifiers until those details load.
+                </p>
+                <Button
+                  variant="secondary"
+                  disabled={metadataPending}
+                  onPress={() => {
+                    roles.refresh();
+                    teams.refresh();
+                    scopes.refresh();
+                  }}
+                >
+                  Try again
+                </Button>
+              </Stack>
+            ) : metadataPending ? (
+              <Spinner label="Loading access-grant details" />
+            ) : null}
             <label className="registration-field">
               <span>Show</span>
               <select value={filter()} onChange={(event: Event) => setFilter((event.target as HTMLSelectElement).value)}>
