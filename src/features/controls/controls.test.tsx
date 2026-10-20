@@ -219,6 +219,19 @@ describe('control drafts (R1-05 frontend #204)', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
+  it('ShouldLinkToAControlScopedExceptionFlowForAnOpenDraft', async () => {
+    // Arrange
+    detailAnswers();
+
+    // Act
+    const container = mount(() => <ControlDetailPage programId={programId} controlId={controlId} />);
+    await vi.waitFor(() => expect(container.querySelector('.control-history li')).not.toBeNull());
+
+    // Assert
+    expect(container.querySelector(`a[href="/acme/programs/${programId}/controls/${controlId}/exceptions"]`)).not.toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
   it('ShouldReviseTheDraftAgainstTheExpectedRevision', async () => {
     // Arrange
     detailAnswers(2);

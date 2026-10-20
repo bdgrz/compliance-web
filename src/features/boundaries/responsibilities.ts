@@ -271,10 +271,24 @@ export async function getWaiver(waiverId: string): Promise<Waiver> {
   return toWaiver(result.data);
 }
 
-export async function approveWaiver(waiverId: string): Promise<Waiver> {
+export async function approveWaiver(
+  waiverId: string,
+  options: { preserveForbiddenDetail?: boolean } = {}
+): Promise<Waiver> {
   const tenantId = requireActiveTenantId();
   const result = await client.approveSeparationOfDutiesWaiver({ params: { tenant_id: tenantId, waiver_id: waiverId } });
-  if (!result.ok) throw programFailure(result, 'approve this exception');
+  if (!result.ok) {
+    const failure = programFailure(result, 'approve this exception');
+    const rejected = result as unknown as { status: number; error?: unknown };
+    const detail =
+      typeof rejected.error === 'object' && rejected.error !== null
+        ? (rejected.error as { detail?: unknown }).detail
+        : null;
+    if (options.preserveForbiddenDetail && rejected.status === 403 && typeof detail === 'string' && detail.trim()) {
+      throw new ProgramRequestError(detail, 403, false);
+    }
+    throw failure;
+  }
   if (!result.data) throw new ProgramRequestError('The exception was not approved.', null, false);
   return toWaiver(result.data);
 }

@@ -335,6 +335,12 @@ export function ControlDetailPage({
                       draft.
                     </p>
                   ) : null}
+                  {draftReady ? (
+                    <p>
+                      If a reviewer or approver needs an exception for this
+                      exact draft, <a href={organizationPath(`/programs/${programId}/controls/${controlId}/exceptions`)}>record or review a scoped exception</a> and have a different administrator approve it.
+                    </p>
+                  ) : null}
                   {(draftReady || pendingRetirement) && !handoffWarning ? (
                     <ReviewForm
                       programId={programId}

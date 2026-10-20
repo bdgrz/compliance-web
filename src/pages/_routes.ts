@@ -147,6 +147,9 @@ const ControlsPage = lazy(() =>
 const ControlDetailPage = lazy(() =>
   import('../features/controls/pages/control-detail.js').then((module) => module.ControlDetailPage)
 );
+const ControlExceptionsPage = lazy(() =>
+  import('../features/controls/pages/control-exceptions.js').then((module) => module.ControlExceptionsPage)
+);
 const BoundariesPage = lazy(() =>
   import('../features/boundaries/pages/boundaries-list.js').then((module) => module.BoundariesPage)
 );
@@ -228,6 +231,7 @@ export const pageRegistry = createRouteRegistry(
           route('/{slug}/access-grants', AccessGrantsPage);
           route('/{slug}/programs/{programId}/controls', ControlsPage);
           route('/{slug}/programs/{programId}/controls/{controlId}', ControlDetailPage);
+          route('/{slug}/programs/{programId}/controls/{controlId}/exceptions', ControlExceptionsPage);
           route('/{slug}/programs/{programId}/boundaries', BoundariesPage);
           route('/{slug}/programs/{programId}/boundaries/{boundaryId}', BoundaryDetailPage);
           route('/{slug}/programs/{programId}/boundaries/{boundaryId}/exceptions', BoundaryExceptionsPage);
