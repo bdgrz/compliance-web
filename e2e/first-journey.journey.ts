@@ -501,7 +501,9 @@ async function grantOrganizationAdmin(
     page.getByRole('heading', { name: 'Programs are not available to you' })
   ).toBeVisible();
   await page.getByRole('link', { name: 'Members', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Members', exact: true })
+  ).toBeVisible();
   const memberRow = page.getByRole('listitem').filter({ hasText: email });
   await expect(memberRow.getByRole('link')).toBeVisible();
 
