@@ -13,7 +13,10 @@ import type {
 import {
   createJourneyProgressEvent,
   type JourneyParticipant,
+  type JourneyProgressDiagnostics,
+  type JourneyReadinessApiResponse,
   type JourneyStepName,
+  summarizeTenantReadinessResponse,
 } from '../src/test-support/first-journey-progress.js';
 import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
 
@@ -42,7 +45,11 @@ function apiResponse(
     response.request().method() === method && path.test(pathOf(response));
 }
 
-async function checkpoint(page: Page, step: JourneyStepName): Promise<void> {
+async function checkpoint(
+  page: Page,
+  step: JourneyStepName,
+  diagnostics?: JourneyProgressDiagnostics
+): Promise<void> {
   let candidates: string[] = [];
   try {
     candidates = await page
@@ -53,8 +60,49 @@ async function checkpoint(page: Page, step: JourneyStepName): Promise<void> {
   } catch {
     // A checkpoint must not replace the actual page or journey failure.
   }
-  const event = createJourneyProgressEvent(step, page.url(), candidates);
+  const event = createJourneyProgressEvent(
+    step,
+    page.url(),
+    candidates,
+    diagnostics
+  );
   process.stderr.write(`[first-journey-progress] ${JSON.stringify(event)}\n`);
+}
+
+function observeTenantReadinessResponses(page: Page): {
+  snapshot: () => JourneyReadinessApiResponse[];
+  dispose: () => void;
+} {
+  const observed: JourneyReadinessApiResponse[] = [];
+  const onResponse = (response: Response) => {
+    const summary = summarizeTenantReadinessResponse(
+      response.url(),
+      response.status()
+    );
+    if (summary && observed.length < 80) observed.push(summary);
+  };
+  page.on('response', onResponse);
+  return {
+    snapshot: () => observed.slice(),
+    dispose: () => page.off('response', onResponse),
+  };
+}
+
+async function performCheckpointedAction(
+  page: Page,
+  started: JourneyStepName,
+  completed: JourneyStepName,
+  failed: JourneyStepName,
+  action: () => Promise<void>
+): Promise<void> {
+  await checkpoint(page, started);
+  try {
+    await action();
+  } catch {
+    await checkpoint(page, failed);
+    throw new Error('The organization form field interaction failed.');
+  }
+  await checkpoint(page, completed);
 }
 
 async function consumeMailboxCode(
@@ -271,27 +319,42 @@ async function signInAndVerify(
 
 async function waitForOrganizationReady(
   page: Page,
-  slug: string
+  slug: string,
+  readinessResponses: () => JourneyReadinessApiResponse[]
 ): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (new URL(page.url()).pathname === `/${slug}`) {
-      await checkpoint(page, 'founder organization page opened');
+      await checkpoint(page, 'founder organization page opened', {
+        readinessResponses: readinessResponses(),
+      });
       return;
     }
     const checkStatus = page.getByRole('button', { name: 'Check status' });
     if (await checkStatus.isVisible().catch(() => false)) {
       await checkStatus.click();
-      if (attempt === 0 || attempt === 19) {
-        await checkpoint(
-          page,
-          'founder organization provisioning status checked'
-        );
-      }
     }
     await page.waitForTimeout(500);
+    if (attempt === 0 || attempt === 19) {
+      await checkpoint(
+        page,
+        'founder organization provisioning status checked',
+        { readinessResponses: readinessResponses() }
+      );
+    }
   }
-  await checkpoint(page, 'founder organization provisioning status checked');
-  await page.waitForURL(`**/${slug}`);
+  await checkpoint(page, 'founder organization provisioning status checked', {
+    readinessResponses: readinessResponses(),
+  });
+  try {
+    await page.waitForURL(`**/${slug}`, { timeout: 30_000 });
+  } catch {
+    await checkpoint(page, 'founder organization provisioning status checked', {
+      readinessResponses: readinessResponses(),
+    });
+    throw new Error(
+      'The organization workspace did not open after readiness checks.'
+    );
+  }
   await checkpoint(page, 'founder organization page opened');
 }
 
@@ -640,17 +703,114 @@ test('first organization admin provisions a scoped team journey and reassignment
     await checkpoint(founder, 'founder organization creation form requested');
     await founder.goto('/organizations/new');
     await checkpoint(founder, 'founder organization creation form opened');
-    await founder.getByLabel('Name', { exact: true }).fill(orgName);
-    await founder
-      .getByLabel('Legal name', { exact: true })
-      .fill('First Journey Example LLC');
-    await founder.getByLabel('Slug', { exact: true }).fill(slug);
-    const registered = founder.waitForResponse(
-      apiResponse('POST', /\/api\/v1\/tenants$/)
+    await performCheckpointedAction(
+      founder,
+      'founder organization name fill started',
+      'founder organization name fill completed',
+      'founder organization name fill failed',
+      async () => {
+        await founder
+          .getByLabel('Name', { exact: true })
+          .fill(orgName, { timeout: 30_000 });
+      }
     );
+    await performCheckpointedAction(
+      founder,
+      'founder organization legal name fill started',
+      'founder organization legal name fill completed',
+      'founder organization legal name fill failed',
+      async () => {
+        await founder
+          .getByLabel('Legal name', { exact: true })
+          .fill('First Journey Example LLC', { timeout: 30_000 });
+      }
+    );
+    await performCheckpointedAction(
+      founder,
+      'founder organization slug fill started',
+      'founder organization slug fill completed',
+      'founder organization slug fill failed',
+      async () => {
+        await founder.getByLabel('Slug').fill(slug, { timeout: 30_000 });
+      }
+    );
+
+    await checkpoint(founder, 'founder organization form state check started');
+    let formValid: boolean;
+    let createButtonEnabled: boolean;
+    let createButtonType: 'submit' | 'button' | 'reset' | 'other';
+    const createButton = founder.getByRole('button', {
+      name: 'Create organization',
+    });
+    try {
+      formValid = await founder
+        .locator('form')
+        .evaluate(
+          (form) => (form as HTMLFormElement).checkValidity(),
+          undefined,
+          { timeout: 30_000 }
+        );
+      createButtonEnabled = await createButton.isEnabled({ timeout: 30_000 });
+      const type = await createButton.getAttribute('type', {
+        timeout: 30_000,
+      });
+      createButtonType =
+        type === 'submit' || type === 'button' || type === 'reset'
+          ? type
+          : 'other';
+    } catch {
+      await checkpoint(founder, 'founder organization form state check failed');
+      throw new Error('The organization form state could not be read.');
+    }
+    await checkpoint(founder, 'founder organization form state checked', {
+      formValid,
+      createButtonEnabled,
+      createButtonType,
+    });
+    expect(formValid).toBe(true);
+    expect(createButtonEnabled).toBe(true);
+    expect(createButtonType).toBe('submit');
+
+    const readinessObserver = observeTenantReadinessResponses(founder);
+    const registered = founder
+      .waitForResponse(apiResponse('POST', /\/api\/v1\/tenants$/), {
+        timeout: 30_000,
+      })
+      .then(
+        (response) => response,
+        () => null
+      );
+    await checkpoint(
+      founder,
+      'founder organization creation button click started'
+    );
+    try {
+      await createButton.click({ timeout: 30_000 });
+    } catch {
+      await checkpoint(
+        founder,
+        'founder organization creation button click failed'
+      );
+      throw new Error('The organization creation button click failed.');
+    }
     await checkpoint(founder, 'founder organization creation submitted');
-    await founder.getByRole('button', { name: 'Create organization' }).click();
     const registerResponse = await registered;
+    if (!registerResponse) {
+      await checkpoint(
+        founder,
+        'founder organization registration response timed out',
+        { registrationRouteFired: false, registrationStatus: null }
+      );
+      throw new Error('The organization registration response timed out.');
+    }
+    await checkpoint(
+      founder,
+      'founder organization registration response received',
+      {
+        registrationRouteFired: true,
+        registrationStatus: registerResponse.status(),
+      }
+    );
     expect(registerResponse.status()).toBe(200);
     await checkpoint(founder, 'founder organization created');
     const tenant = (await registerResponse.json()) as TenantResponse;
@@ -660,7 +820,11 @@ test('first organization admin provisions a scoped team journey and reassignment
       founder,
       'founder organization provisioning check started'
     );
-    await waitForOrganizationReady(founder, slug);
+    try {
+      await waitForOrganizationReady(founder, slug, readinessObserver.snapshot);
+    } finally {
+      readinessObserver.dispose();
+    }
     await expect(founder.getByText(orgName, { exact: true })).toBeVisible();
     await checkpoint(founder, 'founder organization page opened');
 

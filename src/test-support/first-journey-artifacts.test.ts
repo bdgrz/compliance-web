@@ -9,4 +9,10 @@ describe('first-journey browser artifact policy', () => {
     expect(playwrightConfig.use?.trace).toBe('off');
     expect(playwrightConfig.preserveOutput).toBe('never');
   });
+
+  it('ShouldBoundBrowserActionsAndExpectations', () => {
+    expect(playwrightConfig.expect?.timeout).toBe(30_000);
+    expect(playwrightConfig.use?.actionTimeout).toBe(30_000);
+    expect(playwrightConfig.use?.navigationTimeout).toBe(30_000);
+  });
 });
