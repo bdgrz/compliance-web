@@ -1,3 +1,4 @@
+import { state } from '@askrjs/askr';
 import { currentAuth } from '@askrjs/askr/router';
 import { resource } from '@askrjs/askr/resources';
 import {
@@ -33,6 +34,7 @@ const accessGuidance: Record<EmailVerification, string> = {
 export function SelectTenantPage({ userId }: { userId?: string | null } = {}) {
   const viewer =
     userId === undefined ? (currentAuth().principal?.id ?? null) : userId;
+  const [verifiedUserId, setVerifiedUserId] = state<string | null>(null);
   const tenants = resource(() => listMyTenants(), []);
   const verification = resource(() => readEmailVerification(viewer), [viewer]);
 
@@ -42,7 +44,10 @@ export function SelectTenantPage({ userId }: { userId?: string | null } = {}) {
     memberships !== null &&
     memberships !== undefined &&
     memberships.length === 0;
-  const verified: EmailVerification = verification.value ?? 'unknown';
+  const verificationAccepted = viewer !== null && verifiedUserId() === viewer;
+  const verified: EmailVerification = verificationAccepted
+    ? 'verified'
+    : (verification.value ?? 'unknown');
   const canCreate = !noAccess || verified !== 'unverified';
 
   return (
@@ -85,10 +90,15 @@ export function SelectTenantPage({ userId }: { userId?: string | null } = {}) {
                 {memberships === null && !error ? (
                   <Spinner label="Loading organizations" />
                 ) : null}
-                {noAccess && verified === 'unverified' && viewer ? (
+                {noAccess &&
+                viewer &&
+                (verified === 'unverified' || verificationAccepted) ? (
                   <EmailVerificationForm
                     userId={viewer}
-                    onVerified={() => verification.refresh()}
+                    onVerified={() => {
+                      setVerifiedUserId(viewer);
+                      void verification.refresh();
+                    }}
                   />
                 ) : null}
                 {(memberships ?? []).map((tenant) => (

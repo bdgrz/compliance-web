@@ -1,0 +1,26 @@
+import { defineConfig } from '@playwright/test';
+
+export const playwrightConfig = defineConfig({
+  testDir: './e2e',
+  testMatch: '**/*.journey.ts',
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  timeout: 15 * 60 * 1000,
+  expect: { timeout: 30 * 1000 },
+  reporter: 'list',
+  outputDir: './test-results/first-journey',
+  preserveOutput: 'never',
+  use: {
+    baseURL: 'http://127.0.0.1:5173',
+    browserName: 'chromium',
+    headless: true,
+    actionTimeout: 30 * 1000,
+    navigationTimeout: 30 * 1000,
+    screenshot: 'off',
+    video: 'off',
+    trace: 'off',
+  },
+});
+
+export default playwrightConfig;

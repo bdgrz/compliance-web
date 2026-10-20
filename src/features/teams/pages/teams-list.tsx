@@ -37,7 +37,11 @@ export function TeamsListPage() {
       setName('');
       reload();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Unable to create the team.');
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'Unable to create the team.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -49,13 +53,20 @@ export function TeamsListPage() {
       await deleteTeam(teamId);
       reload();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Unable to delete the team.');
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'Unable to delete the team.'
+      );
     }
   }
 
   return (
     <Page>
-      <PageHeader title="Teams" description="Create teams and manage who belongs to each one." />
+      <PageHeader
+        title="Teams"
+        description="Create teams and manage who belongs to each one."
+      />
       <Card>
         <CardHeader>
           <CardTitle>New team</CardTitle>
@@ -63,13 +74,18 @@ export function TeamsListPage() {
         <CardContent>
           <form onSubmit={(event) => void create(event)}>
             <Block direction="row" gap="md">
-              <input
-                type="text"
-                placeholder="Team name"
-                value={name()}
-                onInput={(event: Event) => setName((event.target as HTMLInputElement).value)}
-                required
-              />
+              <label className="registration-field">
+                <span>Team name</span>
+                <input
+                  type="text"
+                  placeholder="Team name"
+                  value={name()}
+                  onInput={(event: Event) =>
+                    setName((event.target as HTMLInputElement).value)
+                  }
+                  required
+                />
+              </label>
               <Button variant="primary" type="submit" disabled={submitting()}>
                 {submitting() ? 'Creating…' : 'Create team'}
               </Button>
@@ -85,9 +101,14 @@ export function TeamsListPage() {
             <CardContent>
               <Block direction="row" gap="md" align="center" justify="between">
                 <Button asChild variant="ghost">
-                  <a href={organizationPath(`/teams/${team.teamId}`)}>{team.name}</a>
+                  <a href={organizationPath(`/teams/${team.teamId}`)}>
+                    {team.name}
+                  </a>
                 </Button>
-                <Button variant="destructive" onPress={() => void remove(team.teamId)}>
+                <Button
+                  variant="destructive"
+                  onPress={() => void remove(team.teamId)}
+                >
                   Delete
                 </Button>
               </Block>

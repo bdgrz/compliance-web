@@ -1,6 +1,9 @@
 import { askr } from '@askrjs/vite';
 import { defineConfig } from 'vite-plus';
 
+const apiProxyTarget =
+  process.env.COMPLIANCE_API_PROXY_TARGET ?? 'http://127.0.0.1:5080';
+
 export default defineConfig({
   plugins: [askr()],
   resolve: { preserveSymlinks: true },
@@ -16,11 +19,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:5080',
-      '/auth': 'http://127.0.0.1:5080',
-      '/healthz': 'http://127.0.0.1:5080',
-      '/openapi': 'http://127.0.0.1:5080',
+      '/api': apiProxyTarget,
+      '/auth': apiProxyTarget,
+      '/healthz': apiProxyTarget,
+      '/openapi': apiProxyTarget,
     },
   },
   build: {
