@@ -1,12 +1,6 @@
 import net from 'node:net';
 
-import {
-  expect,
-  test,
-  type Page,
-  type Request,
-  type Response,
-} from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import type {
   CreateBoundaryResponse200,
   CreateProgramResponse200,
@@ -17,17 +11,10 @@ import type {
   RegisterTenantResponse200,
 } from '../src/api-client/operations.js';
 import {
-  createOrganizationReadinessTimingTracker,
-  createJourneyProgressEvent,
-  snapshotTenantReadinessEvents,
+  createJourneyBreadcrumb,
   type JourneyParticipant,
-  type JourneyReadinessApiEvent,
-  type JourneyProgressDiagnostics,
-  type JourneyReadinessApiRequestState,
   type JourneyStepName,
-  summarizeTenantReadinessEndpoint,
-  summarizeTenantProvisioningState,
-} from '../src/test-support/first-journey-progress.js';
+} from '../src/test-support/first-journey-breadcrumbs.js';
 import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
 
 type MemberRosterPage = NonNullable<ListTenantMembersResponse200>;
@@ -42,8 +29,7 @@ type MailboxReply = { status: string; token?: string };
 const mailboxSocket = process.env.COMPLIANCE_E2E_MAILBOX_SOCKET;
 const orgName = 'First Journey Example';
 const programName = 'First Journey SOC 2';
-let journeyStartedAt: number | undefined;
-let organizationReadinessTiming = createOrganizationReadinessTimingTracker();
+const teamName = 'First Journey Reviewers';
 
 function pathOf(response: Response): string {
   return new URL(response.url()).pathname;
@@ -57,11 +43,7 @@ function apiResponse(
     response.request().method() === method && path.test(pathOf(response));
 }
 
-async function checkpoint(
-  page: Page,
-  step: JourneyStepName,
-  diagnostics?: JourneyProgressDiagnostics
-): Promise<void> {
+async function checkpoint(page: Page, step: JourneyStepName): Promise<void> {
   let candidates: string[] = [];
   try {
     candidates = await page
@@ -72,116 +54,8 @@ async function checkpoint(
   } catch {
     // A checkpoint must not replace the actual page or journey failure.
   }
-  const event = createJourneyProgressEvent(step, page.url(), candidates, {
-    ...diagnostics,
-    ...(journeyStartedAt === undefined
-      ? {}
-      : {
-          elapsedMs: Math.max(
-            0,
-            Math.round(performance.now() - journeyStartedAt)
-          ),
-        }),
-    ...(organizationReadinessTiming.registrationToFirstSlugResolutionMs() ===
-    undefined
-      ? {}
-      : {
-          registrationToFirstSlugResolutionMs:
-            organizationReadinessTiming.registrationToFirstSlugResolutionMs(),
-        }),
-    ...(organizationReadinessTiming.registrationToFirstWorkspaceMs() ===
-    undefined
-      ? {}
-      : {
-          registrationToFirstWorkspaceMs:
-            organizationReadinessTiming.registrationToFirstWorkspaceMs(),
-        }),
-  });
-  process.stderr.write(`[first-journey-progress] ${JSON.stringify(event)}\n`);
-}
-
-function observeTenantReadinessRequests(page: Page): {
-  snapshot: () => Promise<JourneyReadinessApiRequestState[]>;
-  dispose: () => void;
-} {
-  const observed: JourneyReadinessApiEvent[] = [];
-  const pendingBodyReads = new Set<Promise<void>>();
-  const append = (
-    request: Request,
-    kind: 'started' | 'response' | 'finished' | 'failed',
-    status?: number
-  ) => {
-    if (request.method() !== 'GET' || observed.length >= 240) return;
-    const endpoint = summarizeTenantReadinessEndpoint(request.url());
-    if (!endpoint) return;
-    observed.push(
-      kind === 'response'
-        ? { endpoint, kind, status: status ?? 0 }
-        : { endpoint, kind }
-    );
-  };
-  const onRequest = (request: Request) => append(request, 'started');
-  const onResponse = (response: Response) => {
-    const request = response.request();
-    const requestPath = new URL(request.url()).pathname;
-    if (request.method() === 'POST' && requestPath === '/api/v1/tenants') {
-      organizationReadinessTiming.recordRegistrationResponse(response.status());
-    }
-    if (
-      request.method() === 'GET' &&
-      summarizeTenantReadinessEndpoint(request.url()) ===
-        'tenant-slug-resolution'
-    ) {
-      organizationReadinessTiming.recordSlugResolutionResponse(
-        response.status()
-      );
-    }
-    if (
-      request.method() === 'GET' &&
-      summarizeTenantReadinessEndpoint(request.url()) === 'tenant-workspace'
-    ) {
-      organizationReadinessTiming.recordWorkspaceResponse(response.status());
-    }
-    append(request, 'response', response.status());
-    if (
-      request.method() !== 'GET' ||
-      summarizeTenantReadinessEndpoint(request.url()) !==
-        'tenant-provisioning-status' ||
-      observed.length >= 240
-    ) {
-      return;
-    }
-
-    const appendProvisioningState = (payload: unknown) => {
-      if (observed.length >= 240) return;
-      observed.push({
-        endpoint: 'tenant-provisioning-status',
-        kind: 'provisioning-state',
-        state: summarizeTenantProvisioningState(payload),
-      });
-    };
-    let pendingBodyRead: Promise<void>;
-    pendingBodyRead = Promise.resolve()
-      .then(() => response.json())
-      .then(appendProvisioningState, () => appendProvisioningState(undefined))
-      .finally(() => pendingBodyReads.delete(pendingBodyRead));
-    pendingBodyReads.add(pendingBodyRead);
-  };
-  const onRequestFinished = (request: Request) => append(request, 'finished');
-  const onRequestFailed = (request: Request) => append(request, 'failed');
-  page.on('request', onRequest);
-  page.on('response', onResponse);
-  page.on('requestfinished', onRequestFinished);
-  page.on('requestfailed', onRequestFailed);
-  return {
-    snapshot: () => snapshotTenantReadinessEvents(observed, pendingBodyReads),
-    dispose: () => {
-      page.off('request', onRequest);
-      page.off('response', onResponse);
-      page.off('requestfinished', onRequestFinished);
-      page.off('requestfailed', onRequestFailed);
-    },
-  };
+  const breadcrumb = createJourneyBreadcrumb(step, page.url(), candidates);
+  process.stderr.write(`[first-journey-step] ${JSON.stringify(breadcrumb)}\n`);
 }
 
 async function performCheckpointedAction(
@@ -415,22 +289,17 @@ async function signInAndVerify(
 
 async function waitForOrganizationReady(
   page: Page,
-  slug: string,
-  readinessRequests: () => Promise<JourneyReadinessApiRequestState[]>
+  slug: string
 ): Promise<void> {
   const timeoutMs = 60_000;
   const checkStatusIntervalMs = 2_000;
   const pollIntervalMs = 250;
-  const progressIntervalMs = 5_000;
   const deadline = Date.now() + timeoutMs;
   let nextStatusCheckAt = 0;
-  let nextProgressAt = 0;
 
   while (Date.now() < deadline) {
     if (new URL(page.url()).pathname === `/${slug}`) {
-      await checkpoint(page, 'founder organization page opened', {
-        readinessRequests: await readinessRequests(),
-      });
+      await checkpoint(page, 'founder organization page opened');
       return;
     }
 
@@ -457,18 +326,8 @@ async function waitForOrganizationReady(
     await page.waitForTimeout(
       Math.max(0, Math.min(pollIntervalMs, deadline - Date.now()))
     );
-    if (Date.now() >= nextProgressAt) {
-      await checkpoint(
-        page,
-        'founder organization provisioning status checked',
-        { readinessRequests: await readinessRequests() }
-      );
-      nextProgressAt = Date.now() + progressIntervalMs;
-    }
   }
-  await checkpoint(page, 'founder organization provisioning status checked', {
-    readinessRequests: await readinessRequests(),
-  });
+  await checkpoint(page, 'founder organization provisioning status checked');
   throw new Error(
     'The organization workspace did not open after readiness checks.'
   );
@@ -549,79 +408,24 @@ async function grantOrganizationAdmin(
   const memberRow = page.getByRole('listitem').filter({ hasText: email });
   await expect(memberRow.getByRole('link')).toBeVisible();
 
-  const roleCatalogRequest = page
-    .waitForResponse(apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/roles$/), {
-      timeout: 10_000,
-    })
-    .catch(() => null);
-  const programCatalogRequest = page
-    .waitForResponse(
-      apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/programs$/),
-      { timeout: 10_000 }
-    )
-    .catch(() => null);
+  const roleCatalogRequest = page.waitForResponse(
+    apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/roles$/),
+    { timeout: 10_000 }
+  );
   await memberRow.getByRole('link').click();
   await page.waitForURL(`**/${slug}/members/${userId}`, { timeout: 10_000 });
-  const [roleCatalogResponse, programCatalogResponse] = await Promise.all([
-    roleCatalogRequest,
-    programCatalogRequest,
-  ]);
-  const roleSelector = page.getByLabel('Role', { exact: true });
-  const scopeSelector = page.getByLabel('Scope', { exact: true });
-  const grantOptionsState = async () => ({
-    grantOptionsLoading: await page
-      .getByLabel('Loading access grant options')
-      .isVisible()
-      .catch(() => false),
-    grantOptionsErrorVisible:
-      (await page.locator('[role="alert"]:visible').count()) > 0,
-    roleSelectorVisible:
-      (await roleSelector.count()) > 0 &&
-      (await roleSelector.isVisible().catch(() => false)),
-    scopeSelectorVisible:
-      (await scopeSelector.count()) > 0 &&
-      (await scopeSelector.isVisible().catch(() => false)),
-    grantOptionsRetryVisible:
-      (await page.getByRole('button', { name: 'Try again' }).count()) > 0 &&
-      (await page
-        .getByRole('button', { name: 'Try again' })
-        .first()
-        .isVisible()
-        .catch(() => false)),
-  });
-  const initialGrantOptionsState = await grantOptionsState();
-  await checkpoint(page, 'founder member grant catalog responses received', {
-    roleCatalogStatus: roleCatalogResponse?.status() ?? null,
-    programCatalogStatus: programCatalogResponse?.status() ?? null,
-    ...initialGrantOptionsState,
-  });
-  if (!roleCatalogResponse || !programCatalogResponse) {
-    throw new Error('One or more access grant catalogs did not respond.');
-  }
+  const roleCatalogResponse = await roleCatalogRequest;
   expect(roleCatalogResponse.ok()).toBeTruthy();
   const roleCatalog = (await roleCatalogResponse.json()) as RoleCatalog;
   const organizationAdminRole = (roleCatalog.items ?? []).find(
     (role) => role?.name === 'Org Admin'
   );
   expect(organizationAdminRole?.role_id).toBeTruthy();
-
-  const selectorWaits = await Promise.allSettled([
-    roleSelector.waitFor({ state: 'visible', timeout: 10_000 }),
-    scopeSelector.waitFor({ state: 'visible', timeout: 10_000 }),
-  ]);
-  if (selectorWaits.some((wait) => wait.status === 'rejected')) {
-    await checkpoint(page, 'founder member grant selector wait failed', {
-      roleCatalogStatus: roleCatalogResponse.status(),
-      programCatalogStatus: programCatalogResponse.status(),
-      ...(await grantOptionsState()),
-    });
-    throw new Error('The organization access grant selectors did not load.');
-  }
-  await checkpoint(page, 'founder member grant selectors ready', {
-    roleCatalogStatus: roleCatalogResponse.status(),
-    programCatalogStatus: programCatalogResponse.status(),
-    ...(await grantOptionsState()),
-  });
+  const roleSelector = page.getByLabel('Role', { exact: true });
+  const scopeSelector = page.getByLabel('Scope', { exact: true });
+  await expect(roleSelector).toBeVisible({ timeout: 10_000 });
+  await expect(scopeSelector).toBeVisible({ timeout: 10_000 });
+  await checkpoint(page, 'founder member grant selectors ready');
 
   await roleSelector.selectOption({ label: 'Org Admin' });
   await scopeSelector.selectOption({ label: 'Whole organization' });
@@ -812,6 +616,101 @@ async function grantProgramRole(
   await checkpoint(page, 'program role grant accepted');
 }
 
+async function createTeamAndAssignContributor(
+  page: Page,
+  slug: string,
+  userId: string,
+  email: string,
+  teamName: string
+): Promise<void> {
+  await checkpoint(page, 'founder team page requested');
+  await page.goto(`/${slug}/teams`);
+  await expect(
+    page.getByRole('heading', { name: 'Teams', exact: true })
+  ).toBeVisible();
+  await page.getByLabel('Team name', { exact: true }).fill(teamName);
+  const created = page.waitForResponse(
+    apiResponse('POST', /\/api\/v1\/tenants\/[^/]+\/teams\/[^/]+$/)
+  );
+  await checkpoint(page, 'founder team creation submitted');
+  await page.getByRole('button', { name: 'Create team' }).click();
+  const createResponse = await created;
+  expect(createResponse.status()).toBe(204);
+  const teamId = pathOf(createResponse).match(/\/teams\/([^/]+)$/)?.[1];
+  expect(teamId).toBeTruthy();
+  await expect(
+    page.getByRole('link', { name: teamName, exact: true })
+  ).toBeVisible({
+    timeout: 15_000,
+  });
+  await checkpoint(page, 'founder team created');
+
+  await page.goto(`/${slug}/teams/${teamId}`);
+  await expect(
+    page.getByRole('heading', { name: teamName, exact: true })
+  ).toBeVisible();
+  await checkpoint(page, 'founder team detail page opened');
+  await page.getByLabel('Grant a role', { exact: true }).selectOption({
+    label: 'Contributor',
+  });
+  const roleGranted = page.waitForResponse(
+    apiResponse(
+      'POST',
+      new RegExp(`/api/v1/tenants/[^/]+/teams/${teamId}/roles/[^/]+$`)
+    )
+  );
+  await checkpoint(page, 'founder team role grant submitted');
+  await page.getByRole('button', { name: 'Grant role' }).click();
+  const roleResponse = await roleGranted;
+  expect(roleResponse.status()).toBe(204);
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'Granted Contributor to this team.',
+    })
+  ).toBeVisible();
+  await checkpoint(page, 'founder team role grant accepted');
+
+  const memberPicker = page.getByLabel('Member', { exact: true });
+  await expect(memberPicker).toBeVisible({ timeout: 10_000 });
+  const contributorOption = memberPicker
+    .locator('option')
+    .filter({ hasText: email });
+  await expect(contributorOption).toHaveCount(1);
+  const contributorOptionValue = await contributorOption.getAttribute('value');
+  expect(contributorOptionValue).toBe(userId);
+  await memberPicker.selectOption(contributorOptionValue!);
+  const memberAccess = page.waitForResponse(
+    apiResponse(
+      'GET',
+      new RegExp(`/api/v1/tenants/[^/]+/members/${userId}/access$`)
+    )
+  );
+  const memberAssigned = page.waitForResponse(
+    apiResponse(
+      'POST',
+      new RegExp(`/api/v1/tenants/[^/]+/teams/${teamId}/members/[^/]+$`)
+    )
+  );
+  await checkpoint(page, 'contributor team assignment submitted');
+  await page.getByRole('button', { name: 'Add member' }).click();
+  const [memberAccessResponse, assignmentResponse] = await Promise.all([
+    memberAccess,
+    memberAssigned,
+  ]);
+  expect(memberAccessResponse.ok()).toBeTruthy();
+  expect(assignmentResponse.status()).toBe(204);
+  const membership =
+    (await memberAccessResponse.json()) as MemberAccessResponse;
+  expect(membership.member_id).toBeTruthy();
+  expect(pathOf(assignmentResponse)).toMatch(
+    new RegExp(
+      `/api/v1/tenants/[^/]+/teams/${teamId}/members/${membership.member_id}$`
+    )
+  );
+  await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await checkpoint(page, 'contributor team assignment accepted');
+}
+
 async function createBoundary(
   page: Page,
   slug: string,
@@ -856,12 +755,10 @@ async function createBoundary(
   return body.boundary_id;
 }
 
-test('first organization admin provisions a scoped team journey and reassignment', async ({
+test('first organization journey covers access, team membership, and reassignment', async ({
   browser,
 }) => {
   test.setTimeout(15 * 60 * 1000);
-  journeyStartedAt = performance.now();
-  organizationReadinessTiming = createOrganizationReadinessTimingTracker();
   const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const slug = `e2e-${runId}`;
   const founderEmail = `founder-${runId}@example.com`;
@@ -939,16 +836,11 @@ test('first organization admin provisions a scoped team journey and reassignment
       await checkpoint(founder, 'founder organization form state check failed');
       throw new Error('The organization form state could not be read.');
     }
-    await checkpoint(founder, 'founder organization form state checked', {
-      formValid,
-      createButtonEnabled,
-      createButtonType,
-    });
+    await checkpoint(founder, 'founder organization form state checked');
     expect(formValid).toBe(true);
     expect(createButtonEnabled).toBe(true);
     expect(createButtonType).toBe('submit');
 
-    const readinessObserver = observeTenantReadinessRequests(founder);
     const registered = founder
       .waitForResponse(apiResponse('POST', /\/api\/v1\/tenants$/), {
         timeout: 30_000,
@@ -975,18 +867,13 @@ test('first organization admin provisions a scoped team journey and reassignment
     if (!registerResponse) {
       await checkpoint(
         founder,
-        'founder organization registration response timed out',
-        { registrationRouteFired: false, registrationStatus: null }
+        'founder organization registration response timed out'
       );
       throw new Error('The organization registration response timed out.');
     }
     await checkpoint(
       founder,
-      'founder organization registration response received',
-      {
-        registrationRouteFired: true,
-        registrationStatus: registerResponse.status(),
-      }
+      'founder organization registration response received'
     );
     expect(registerResponse.status()).toBe(200);
     await checkpoint(founder, 'founder organization created');
@@ -997,11 +884,7 @@ test('first organization admin provisions a scoped team journey and reassignment
       founder,
       'founder organization provisioning check started'
     );
-    try {
-      await waitForOrganizationReady(founder, slug, readinessObserver.snapshot);
-    } finally {
-      readinessObserver.dispose();
-    }
+    await waitForOrganizationReady(founder, slug);
     await expect(founder.getByText(orgName, { exact: true })).toBeVisible();
     await checkpoint(founder, 'founder organization page opened');
 
@@ -1086,6 +969,21 @@ test('first organization admin provisions a scoped team journey and reassignment
       slug,
       contributorUserId,
       'Standard Users',
+      'Contributor',
+      'founder'
+    );
+    await createTeamAndAssignContributor(
+      founder,
+      slug,
+      contributorUserId,
+      contributorEmail,
+      teamName
+    );
+    await showMemberAccess(
+      founder,
+      slug,
+      contributorUserId,
+      teamName,
       'Contributor',
       'founder'
     );
