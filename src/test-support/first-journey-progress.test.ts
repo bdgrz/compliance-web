@@ -92,6 +92,7 @@ describe('first-journey progress diagnostics', () => {
       {
         elapsedMs: 12_345,
         registrationToFirstSlugResolutionMs: 1_234,
+        registrationToFirstWorkspaceMs: 2_345,
         roleCatalogStatus: 200,
         programCatalogStatus: 403,
         grantOptionsLoading: false,
@@ -107,6 +108,7 @@ describe('first-journey progress diagnostics', () => {
       visibleText: [],
       elapsedMs: 12_345,
       registrationToFirstSlugResolutionMs: 1_234,
+      registrationToFirstWorkspaceMs: 2_345,
       roleCatalogStatus: 200,
       programCatalogStatus: 403,
       grantOptionsLoading: false,
@@ -126,6 +128,7 @@ describe('first-journey progress diagnostics', () => {
         elapsedMs: -1,
         registrationToFirstSlugResolutionMs:
           'private-value' as unknown as number,
+        registrationToFirstWorkspaceMs: -2,
         roleCatalogStatus: 700,
         programCatalogStatus: 'private-id' as unknown as number,
         grantOptionsLoading: 'private-value' as unknown as boolean,
@@ -164,6 +167,23 @@ describe('first-journey progress diagnostics', () => {
     timing.recordSlugResolutionResponse(200);
 
     expect(timing.registrationToFirstSlugResolutionMs()).toBe(1_250);
+  });
+
+  it('ShouldMeasureFirstAuthorizedWorkspaceResponseFromRegistration', () => {
+    let now = 100;
+    const timing = createOrganizationReadinessTimingTracker(() => now);
+
+    now = 200;
+    timing.recordRegistrationResponse(200);
+    now = 400;
+    timing.recordWorkspaceResponse(403);
+    expect(timing.registrationToFirstWorkspaceMs()).toBeUndefined();
+    now = 1_750;
+    timing.recordWorkspaceResponse(200);
+    now = 2_100;
+    timing.recordWorkspaceResponse(200);
+
+    expect(timing.registrationToFirstWorkspaceMs()).toBe(1_550);
   });
 
   it('ShouldSummarizeReadinessResponsesWithoutKeepingRequestIdentifiers', () => {

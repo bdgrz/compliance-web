@@ -89,6 +89,13 @@ async function checkpoint(
           registrationToFirstSlugResolutionMs:
             organizationReadinessTiming.registrationToFirstSlugResolutionMs(),
         }),
+    ...(organizationReadinessTiming.registrationToFirstWorkspaceMs() ===
+    undefined
+      ? {}
+      : {
+          registrationToFirstWorkspaceMs:
+            organizationReadinessTiming.registrationToFirstWorkspaceMs(),
+        }),
   });
   process.stderr.write(`[first-journey-progress] ${JSON.stringify(event)}\n`);
 }
@@ -128,6 +135,12 @@ function observeTenantReadinessRequests(page: Page): {
       organizationReadinessTiming.recordSlugResolutionResponse(
         response.status()
       );
+    }
+    if (
+      request.method() === 'GET' &&
+      summarizeTenantReadinessEndpoint(request.url()) === 'tenant-workspace'
+    ) {
+      organizationReadinessTiming.recordWorkspaceResponse(response.status());
     }
     append(request, 'response', response.status());
     if (

@@ -120,6 +120,7 @@ export type JourneyProgressEvent = {
   registrationStatus?: number | null;
   elapsedMs?: number;
   registrationToFirstSlugResolutionMs?: number;
+  registrationToFirstWorkspaceMs?: number;
   roleCatalogStatus?: number | null;
   programCatalogStatus?: number | null;
   grantOptionsLoading?: boolean;
@@ -177,6 +178,7 @@ export type JourneyProgressDiagnostics = {
   registrationStatus?: number | null;
   elapsedMs?: number;
   registrationToFirstSlugResolutionMs?: number;
+  registrationToFirstWorkspaceMs?: number;
   roleCatalogStatus?: number | null;
   programCatalogStatus?: number | null;
   grantOptionsLoading?: boolean;
@@ -310,6 +312,10 @@ export function createJourneyProgressEvent(
     event.registrationToFirstSlugResolutionMs =
       diagnostics.registrationToFirstSlugResolutionMs;
   }
+  if (isNonnegativeInteger(diagnostics.registrationToFirstWorkspaceMs)) {
+    event.registrationToFirstWorkspaceMs =
+      diagnostics.registrationToFirstWorkspaceMs;
+  }
   if (
     diagnostics.roleCatalogStatus === null ||
     (typeof diagnostics.roleCatalogStatus === 'number' &&
@@ -348,10 +354,13 @@ export function createOrganizationReadinessTimingTracker(
 ): {
   recordRegistrationResponse: (status: number) => void;
   recordSlugResolutionResponse: (status: number) => void;
+  recordWorkspaceResponse: (status: number) => void;
   registrationToFirstSlugResolutionMs: () => number | undefined;
+  registrationToFirstWorkspaceMs: () => number | undefined;
 } {
   let registrationRespondedAt: number | undefined;
   let firstSlugResolutionAt: number | undefined;
+  let firstWorkspaceResponseAt: number | undefined;
 
   return {
     recordRegistrationResponse(status) {
@@ -368,6 +377,15 @@ export function createOrganizationReadinessTimingTracker(
         firstSlugResolutionAt = now();
       }
     },
+    recordWorkspaceResponse(status) {
+      if (
+        status === 200 &&
+        registrationRespondedAt !== undefined &&
+        firstWorkspaceResponseAt === undefined
+      ) {
+        firstWorkspaceResponseAt = now();
+      }
+    },
     registrationToFirstSlugResolutionMs() {
       if (
         registrationRespondedAt === undefined ||
@@ -378,6 +396,18 @@ export function createOrganizationReadinessTimingTracker(
       return Math.max(
         0,
         Math.round(firstSlugResolutionAt - registrationRespondedAt)
+      );
+    },
+    registrationToFirstWorkspaceMs() {
+      if (
+        registrationRespondedAt === undefined ||
+        firstWorkspaceResponseAt === undefined
+      ) {
+        return undefined;
+      }
+      return Math.max(
+        0,
+        Math.round(firstWorkspaceResponseAt - registrationRespondedAt)
       );
     },
   };
