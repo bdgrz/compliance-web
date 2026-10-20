@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accessibilityViolations } from '../../accessibility/axe.js';
 import { stubApi } from '../../test-support/api-stub.js';
 import { clearActiveTenant, resolveTenantRoute } from '../tenants/tenants.js';
+import { MemberAccessPage } from '../members/pages/member-access.js';
 import { ProgramDetailPage } from './pages/program-detail.js';
 import { ProgramsPage } from './pages/programs-list.js';
 
@@ -127,6 +128,77 @@ describe('program plan and setup work (R1-01 frontend #177)', () => {
     expect(container.querySelector('a[href="/acme/programs"]')?.textContent).toBe('Back to programs');
   });
 
+  it('ShouldKeepDirectFirmStaffNavigationForbiddenGivenOnlyAStandingTeamPath', async () => {
+    // Arrange: the access explanation reports a firm-staff member's standing team path,
+    // but the business-record endpoint remains the authority for direct navigation.
+    const firmStaffUserId = 'firm-staff-user';
+    api.reply(`GET ${base}/members/${firmStaffUserId}`, 200, {
+      user_id: firmStaffUserId,
+      tenant_id: tenantId,
+      affiliation: 'firm_staff',
+      is_suspended: false,
+      display_name: 'Firm Staff User',
+    });
+    api.reply(`GET ${base}/members/${firmStaffUserId}/responsibilities`, 200, []);
+    api.reply(`GET ${base}/members/${firmStaffUserId}/access`, 200, {
+      tenant_id: tenantId,
+      user_id: firmStaffUserId,
+      member_id: 'firm-staff-member',
+      paths: [{
+        team_id: 'advisors',
+        team_name: 'Client advisors',
+        role_id: 'program-reader',
+        role_name: 'Program reader',
+        permissions: ['program.read'],
+      }],
+      grant_paths: [],
+      effective_permissions: ['program.read'],
+    });
+    api.reply(`GET ${base}/roles`, 200, { items: [], next_cursor: null });
+    api.reply(`GET ${base}/programs`, 200, {
+      items: [{ tenant_id: tenantId, program_id: programId, name: 'SOC 2 2026' }],
+      next_cursor: null,
+    });
+    const accessContainer = mount(() => <MemberAccessPage userId={firmStaffUserId} />);
+    await vi.waitFor(() => expect(accessContainer.textContent).toContain('Client advisors'));
+    expect(accessContainer.textContent).toContain('Firm staff. No business-record access until an accepted engagement assignment.');
+
+    api.reply(`GET ${program}`, 403, problem(403, 'Forbidden'));
+    api.reply(`${program}/setup-work`, 200, {
+      tenant_id: tenantId,
+      program_id: programId,
+      program_revision: 2,
+      items: [{ code: 'private', detail: 'Confidential setup-work marker', source_type: 'program', source_id: programId }],
+      next_boundary_cursor: null,
+    });
+    api.reply(`${program}/revisions`, 200, {
+      items: [{
+        program_id: programId,
+        revision: 2,
+        name: 'Confidential program-history marker',
+        plan,
+        actor_member_id: 'm',
+        actor_display: 'Casey Lead',
+        changed_at: '2026-09-20T00:00:00Z',
+      }],
+      next_cursor: null,
+    });
+
+    // Act
+    const container = mount(() => <ProgramDetailPage programId={programId} />);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('This program is not available to you'));
+
+    // Assert
+    expect(api.requestUrls).toContainEqual({ method: 'GET', url: `http://app.test${program}` });
+    expect(api.requested).not.toContain(`${program}/setup-work`);
+    expect(api.requested).not.toContain(`${program}/revisions`);
+    expect(container.textContent).not.toContain('Confidential setup-work marker');
+    expect(container.textContent).not.toContain('Confidential program-history marker');
+    expect(container.textContent).not.toContain('SOC 2 2026');
+    expect(container.querySelector('a[href="/acme/applications"]')).toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
   it('ShouldShowStagePlanSetupWorkAndUnconfirmedTargets', async () => {
     // Arrange
     programAnswers();
@@ -165,6 +237,11 @@ describe('program plan and setup work (R1-01 frontend #177)', () => {
     const sent = api.bodies.find((b) => b.method === 'PUT' && b.path === program)?.body as Record<string, unknown>;
     expect(sent.expected_revision).toBe(2);
     expect(sent.plan).toEqual({ ...plan, audit_firm: 'Contoso CPAs' });
+    await vi.waitFor(() => {
+      expect(api.requested.filter((path) => path === program).length).toBeGreaterThan(1);
+      expect(api.requested.filter((path) => path === `${program}/setup-work`).length).toBeGreaterThan(1);
+      expect(api.requested.filter((path) => path === `${program}/revisions`).length).toBeGreaterThan(1);
+    });
   });
 
   it('ShouldAskToReloadGivenAStaleRevisionConflict', async () => {

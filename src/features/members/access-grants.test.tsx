@@ -88,6 +88,41 @@ afterEach(() => {
 });
 
 describe('scoped access grants (R1-04b frontend #187)', () => {
+  it('ShouldWaitForGrantCatalogsBeforeShowingTheGrantForm', async () => {
+    // Arrange
+    catalog();
+    const transport = globalThis.fetch;
+    let releaseRoles!: (response: Response) => void;
+    let rolesRequestStarted = false;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), 'http://app.test');
+      if (url.pathname === `${base}/roles`) {
+        rolesRequestStarted = true;
+        return await new Promise<Response>((resolve) => {
+          releaseRoles = resolve;
+        });
+      }
+      return transport(input, init);
+    });
+
+    // Act
+    const container = mount(() => <AccessGrantsCard access={access([])} onChanged={() => {}} />);
+    await vi.waitFor(() => expect(rolesRequestStarted).toBe(true));
+
+    // Assert
+    try {
+      expect(container.querySelector('form')).toBeNull();
+      expect(container.querySelector('[aria-label="Loading access grant options"]')).not.toBeNull();
+      expect(await accessibilityViolations(container)).toEqual([]);
+    } finally {
+      releaseRoles(new Response(JSON.stringify({ items: [{ role_id: 'role-lead', name: 'Compliance Lead' }], next_cursor: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+    await vi.waitFor(() => expect(container.querySelector('form')).not.toBeNull());
+  });
+
   it('ShouldGrantKnownOrganizationScopeGivenDeniedProgramDiscovery', async () => {
     // Arrange
     catalog();

@@ -292,4 +292,26 @@ describe('member access explanation (R1-04a frontend #184)', () => {
     // Assert
     expect(container.querySelector('a[href="/acme/members"]')).not.toBeNull();
   });
+
+  it('ShouldNotRequestOrRenderMemberDetailsGivenAccessExplanationIsForbidden', async () => {
+    // Arrange
+    api.reply(`GET ${base}/members/${userId}`, 200, {
+      user_id: userId,
+      tenant_id: tenantId,
+      display_name: 'Private Member Name',
+      verified_email_address: 'private@example.test',
+    });
+    api.reply(`GET ${base}/members/${userId}/access`, 403, problem(403, 'Forbidden'));
+
+    // Act
+    const container = mount(() => <MemberAccessPage userId={userId} />);
+    await vi.waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('Access details are not available to you'));
+
+    // Assert
+    expect(api.requested).not.toContain(`${base}/members/${userId}`);
+    expect(container.textContent).not.toContain('Private Member Name');
+    expect(container.textContent).not.toContain('private@example.test');
+    expect(container.querySelector('form')).toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
 });
