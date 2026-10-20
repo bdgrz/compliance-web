@@ -10,10 +10,15 @@ import { ProgramReadinessPage } from './pages/program-readiness.js';
 const tenantId = '0190a1b2-0000-7000-8000-000000000001';
 const programId = '0190a1b2-0000-7000-8000-0000000000b1';
 const assessmentId = '0190a1b2-0000-7000-8000-0000000000d1';
+const olderAssessmentId = '0190a1b2-0000-7000-8000-0000000000d2';
 const mappedGap = '0190a1b2-0000-7000-8000-0000000000e1';
 const inputGap = '0190a1b2-0000-7000-8000-0000000000e2';
 const memberUser = '0190a1b2-0000-7000-8000-0000000000f1';
 const memberId = '0190a1b2-0000-7000-8000-0000000000f2';
+const includedSystemId = '0190a1b2-0000-7000-8000-000000000101';
+const excludedSystemId = '0190a1b2-0000-7000-8000-000000000102';
+const unresolvedSystemId = '0190a1b2-0000-7000-8000-000000000103';
+const olderSystemId = '0190a1b2-0000-7000-8000-000000000104';
 const base = `/api/v1/tenants/${tenantId}`;
 const readiness = `${base}/programs/${programId}/readiness`;
 const assessmentPath = `${readiness}/assessments/${assessmentId}`;
@@ -33,6 +38,42 @@ function problem(status: number, detail: string, transient = false) {
 
 function plan(gapId: string) {
   return { gap_id: gapId, owner_member_id: memberId, target_date: '2027-01-15', action: 'Map CC6.1', planned_by: actor, planned_at: '2026-09-20T00:00:00Z' };
+}
+
+function accessReviewDecision(
+  systemInstanceId: string,
+  options: { decision?: string; approvedBy?: string; reason?: string; reviewBy?: string | null; waiverId?: string | null } = {}
+) {
+  return {
+    tenant_id: tenantId,
+    application_id: '0190a1b2-0000-7000-8000-000000000201',
+    system_instance_id: systemInstanceId,
+    system_instance_revision: 3,
+    decision_id: '0190a1b2-0000-7000-8000-000000000202',
+    sequence: 2,
+    decision: options.decision ?? 'included',
+    reason: options.reason ?? 'Approved for the finance team.',
+    effective_from: '2026-09-20T00:00:00Z',
+    review_by: options.reviewBy === undefined ? '2026-10-20T00:00:00Z' : options.reviewBy,
+    approved_by: { kind: 'member', id: memberId, display: options.approvedBy ?? 'Morgan Approver' },
+    decided_at: '2026-09-20T00:00:00Z',
+    separation_of_duties_waiver_id:
+      options.waiverId === undefined ? '0190a1b2-0000-7000-8000-000000000203' : options.waiverId,
+  };
+}
+
+function accessReviewScope(
+  systemInstanceId: string,
+  status: string,
+  reviewOverdue: boolean,
+  effectiveDecision: ReturnType<typeof accessReviewDecision> | null
+) {
+  return {
+    system_instance_id: systemInstanceId,
+    status,
+    review_overdue: reviewOverdue,
+    effective_decision: effectiveDecision,
+  };
 }
 
 function gaps(planned: boolean) {
@@ -58,8 +99,21 @@ function gaps(planned: boolean) {
   ];
 }
 
-function seed(options: { planned?: boolean; decision?: unknown } = {}) {
+function seed(
+  options: { planned?: boolean; decision?: unknown; accessReviewScopes?: unknown[]; sourceTruncated?: boolean } = {}
+) {
   const gapList = gaps(options.planned ?? false);
+  if (options.sourceTruncated) {
+    gapList.push({
+      gap_id: '0190a1b2-0000-7000-8000-0000000000e3',
+      kind: 'source_truncated',
+      subject: 'applications_access_review_scope',
+      rule_id: 'source_family_within_limit',
+      explanation: 'The bounded access-review source was truncated.',
+      sources: [],
+      plan: null,
+    });
+  }
   api.reply(`GET ${readiness}/assessments`, 200, {
     items: [
       {
@@ -111,6 +165,7 @@ function seed(options: { planned?: boolean; decision?: unknown } = {}) {
       },
     ],
     gaps: gapList,
+    access_review_scopes: options.accessReviewScopes,
     rule_met_count: 1,
     gap_count: 2,
     run_by: actor,
@@ -123,6 +178,28 @@ function seed(options: { planned?: boolean; decision?: unknown } = {}) {
     next_cursor: null,
   });
   api.reply(`GET ${base}/members/${memberUser}/access`, 200, { tenant_id: tenantId, user_id: memberUser, member_id: memberId, paths: [] });
+}
+
+function savedAssessmentDetail(id: string, asOf: string, accessReviewScopes: unknown[]) {
+  return {
+    tenant_id: tenantId,
+    program_id: programId,
+    assessment_id: id,
+    revision: 3,
+    rule_version: 'readiness-rules/1',
+    as_of: asOf,
+    edition_id: null,
+    input_fingerprint: 'sha256:older',
+    inputs: [],
+    findings: [],
+    gaps: [],
+    rule_met_count: 0,
+    gap_count: 0,
+    run_by: actor,
+    run_at: asOf,
+    decision: null,
+    access_review_scopes: accessReviewScopes,
+  };
 }
 
 function submit(container: HTMLElement, label: string) {
@@ -356,5 +433,152 @@ describe('readiness assessment and gap plan (R1-08 frontend #207)', () => {
 
     // Assert
     expect(container.querySelector('form')).toBeNull();
+  });
+
+  it('ShouldShowSavedIncludedExcludedAndUnresolvedScopeWithDecisionEvidence', async () => {
+    // Arrange
+    seed({
+      accessReviewScopes: [
+        accessReviewScope(includedSystemId, 'included', true, accessReviewDecision(includedSystemId)),
+        accessReviewScope(
+          excludedSystemId,
+          'excluded',
+          false,
+          accessReviewDecision(excludedSystemId, {
+            decision: 'excluded',
+            approvedBy: 'Riley Approver',
+            reason: 'This system is outside the reviewed user population.',
+            reviewBy: null,
+            waiverId: null,
+          })
+        ),
+        accessReviewScope(unresolvedSystemId, 'unresolved', false, null),
+      ],
+    });
+
+    // Act
+    const container = mount(() => <ProgramReadinessPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain(unresolvedSystemId));
+
+    // Assert
+    const table = [...container.querySelectorAll('table')].find((item) =>
+      item.querySelector('caption')?.textContent?.includes('Per-system access-review scope')
+    )!;
+    const rows = [...table.querySelectorAll('tbody tr')];
+    expect(table.querySelector('caption')?.textContent).toContain('saved in this assessment');
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining(`${includedSystemId}IncludedOverdue`),
+      expect.stringContaining(`${excludedSystemId}ExcludedNot overdue`),
+      expect.stringContaining(`${unresolvedSystemId}UnresolvedNot overdue`),
+    ]);
+    expect(rows[0]?.textContent).toContain('Morgan Approver');
+    expect(rows[0]?.textContent).toContain('Approved for the finance team.');
+    expect(rows[0]?.textContent).toContain('Effective from');
+    expect(rows[0]?.textContent).toContain(
+      new Date('2026-09-20T00:00:00Z').toLocaleString(undefined, { timeZone: 'UTC', timeZoneName: 'short' })
+    );
+    expect(rows[0]?.textContent).toContain('Review by');
+    expect(rows[0]?.textContent).toContain(
+      new Date('2026-10-20T00:00:00Z').toLocaleString(undefined, { timeZone: 'UTC', timeZoneName: 'short' })
+    );
+    expect(rows[0]?.textContent).toContain('Separation-of-duties waiver recorded');
+    expect(rows[1]?.textContent).toContain('Riley Approver');
+    expect(rows[1]?.textContent).toContain('This system is outside the reviewed user population.');
+    expect(rows[1]?.textContent).not.toContain('Review by');
+    expect(rows[1]?.textContent).not.toContain('waiver recorded');
+    expect(rows[2]?.textContent).toContain('No decision was effective at the assessment time.');
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldShowAnEmptyScopeStateGivenAnEmptySavedArray', async () => {
+    // Arrange
+    seed({ accessReviewScopes: [] });
+
+    // Act
+    const container = mount(() => <ProgramReadinessPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('No per-system access-review scope rows were recorded'));
+
+    // Assert
+    expect(container.querySelector('table caption')?.textContent).not.toContain('Per-system access-review scope');
+  });
+
+  it('ShouldTreatAnOlderAssessmentWithoutTheScopePropertyAsEmpty', async () => {
+    // Arrange
+    seed();
+
+    // Act
+    const container = mount(() => <ProgramReadinessPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('No per-system access-review scope rows were recorded'));
+
+    // Assert
+    expect(container.textContent).not.toContain('Per-system access-review scope saved in this assessment');
+  });
+
+  it('ShouldExplainThatTruncatedScopeEvidenceIsPartial', async () => {
+    // Arrange
+    seed({
+      accessReviewScopes: [accessReviewScope(includedSystemId, 'included', false, accessReviewDecision(includedSystemId))],
+      sourceTruncated: true,
+    });
+
+    // Act
+    const container = mount(() => <ProgramReadinessPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain('This list is partial because the source was truncated'));
+
+    // Assert
+    expect(container.textContent).toContain('only the rows captured in this assessment');
+    expect(container.textContent).toContain('does not represent the full system population');
+    expect(container.textContent).toContain(includedSystemId);
+  });
+
+  it('ShouldShowTheSelectedAssessmentsOwnSavedScopeRows', async () => {
+    // Arrange
+    const firstScope = accessReviewScope(includedSystemId, 'included', false, accessReviewDecision(includedSystemId));
+    const olderScope = accessReviewScope(olderSystemId, 'excluded', false, accessReviewDecision(olderSystemId, { decision: 'excluded' }));
+    seed({ accessReviewScopes: [firstScope] });
+    api.reply(`GET ${readiness}/assessments`, 200, {
+      items: [
+        {
+          assessment_id: assessmentId,
+          rule_version: 'readiness-rules/1',
+          as_of: '2026-09-25T00:00:00Z',
+          rule_met_count: 1,
+          gap_count: 2,
+          run_by: actor,
+          run_at: '2026-09-25T00:00:00Z',
+          decision_outcome: null,
+        },
+        {
+          assessment_id: olderAssessmentId,
+          rule_version: 'readiness-rules/1',
+          as_of: '2026-09-24T00:00:00Z',
+          rule_met_count: 0,
+          gap_count: 0,
+          run_by: actor,
+          run_at: '2026-09-24T00:00:00Z',
+          decision_outcome: null,
+        },
+      ],
+      next_cursor: null,
+    });
+    const olderPath = `${readiness}/assessments/${olderAssessmentId}`;
+    api.reply(`GET ${olderPath}`, 200, savedAssessmentDetail(olderAssessmentId, '2026-09-24T00:00:00Z', [olderScope]));
+    api.reply(`GET ${olderPath}/gaps`, 200, { items: [], next_cursor: null });
+
+    // Act
+    const container = mount(() => <ProgramReadinessPage programId={programId} />);
+    await vi.waitFor(() => expect(container.textContent).toContain(includedSystemId));
+    const assessmentTable = [...container.querySelectorAll('table')].find((item) =>
+      item.querySelector('caption')?.textContent?.startsWith('Assessments')
+    )!;
+    ([...assessmentTable.querySelectorAll('tbody button')][1] as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(container.textContent).toContain(olderSystemId));
+
+    // Assert
+    expect(container.textContent).not.toContain(includedSystemId);
+    expect(api.requestUrls).toContainEqual(expect.objectContaining({ method: 'GET', url: expect.stringContaining(olderPath) }));
+    expect(api.requested.some((path) => path.includes('/access-review-scope'))).toBe(false);
+    expect(await accessibilityViolations(container)).toEqual([]);
   });
 });
