@@ -818,6 +818,8 @@ describe('separation-of-duties conflicts and exceptions (R1-04e frontend #193)',
     expect(sent.expires_at).toBe('2099-09-29T23:59:59.000Z');
     const summary = container.querySelector('.boundary-waiver')!.textContent!;
     expect(summary).toContain('Adrian Admin');
+    expect(summary).toContain('the selected member');
+    expect(summary).not.toContain(memberId);
     expect(summary).toContain('Only one qualified reviewer this week.');
     expect(summary).toContain('boundary revision 3');
     expect(summary).toContain('Awaiting approval by a different administrator');
