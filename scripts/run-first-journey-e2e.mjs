@@ -3,10 +3,10 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 import { childExit, hasExited, stop } from './child-process.mjs';
+import { createHostReadinessReader } from './host-readiness.mjs';
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -81,11 +81,11 @@ async function startBackendHost() {
     }
   );
 
+  const readiness = createHostReadinessReader(host.stdout);
   const ready = new Promise((resolve, reject) => {
-    const startupOutput = [];
-    const lines = createInterface({ input: host.stdout });
     const timer = setTimeout(
       () => {
+        readiness.close();
         reject(
           new Error(
             'Timed out waiting for the browser E2E host readiness message.'
@@ -95,21 +95,8 @@ async function startBackendHost() {
       10 * 60 * 1000
     );
 
-    lines.on('line', (line) => {
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        startupOutput.push(line);
-        return;
-      }
-      if (message.type !== 'ready') {
-        startupOutput.push(line);
-        return;
-      }
-
+    readiness.ready.then((message) => {
       clearTimeout(timer);
-      lines.close();
       try {
         const api = new URL(message.apiBaseUri);
         if (api.protocol !== 'http:' || api.hostname !== '127.0.0.1') {
@@ -137,13 +124,15 @@ async function startBackendHost() {
 
     host.once('error', (error) => {
       clearTimeout(timer);
+      readiness.close();
       reject(error);
     });
     host.once('exit', (code, signal) => {
       clearTimeout(timer);
+      readiness.close();
       const output =
-        startupOutput.length > 0
-          ? `\nHost output before readiness:\n${startupOutput.join('\n')}`
+        readiness.startupOutput.length > 0
+          ? `\nHost output before readiness:\n${readiness.startupOutput.join('\n')}`
           : '';
       reject(
         new Error(
