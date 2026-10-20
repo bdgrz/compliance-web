@@ -344,7 +344,7 @@ export function createJourneyProgressEvent(
 }
 
 export function createOrganizationReadinessTimingTracker(
-  now: () => number = Date.now
+  now: () => number = () => performance.now()
 ): {
   recordRegistrationResponse: (status: number) => void;
   recordSlugResolutionResponse: (status: number) => void;

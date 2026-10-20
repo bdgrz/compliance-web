@@ -76,7 +76,12 @@ async function checkpoint(
     ...diagnostics,
     ...(journeyStartedAt === undefined
       ? {}
-      : { elapsedMs: Math.max(0, Date.now() - journeyStartedAt) }),
+      : {
+          elapsedMs: Math.max(
+            0,
+            Math.round(performance.now() - journeyStartedAt)
+          ),
+        }),
     ...(organizationReadinessTiming.registrationToFirstSlugResolutionMs() ===
     undefined
       ? {}
@@ -842,7 +847,7 @@ test('first organization admin provisions a scoped team journey and reassignment
   browser,
 }) => {
   test.setTimeout(15 * 60 * 1000);
-  journeyStartedAt = Date.now();
+  journeyStartedAt = performance.now();
   organizationReadinessTiming = createOrganizationReadinessTimingTracker();
   const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const slug = `e2e-${runId}`;
