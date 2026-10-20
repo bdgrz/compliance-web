@@ -40,6 +40,12 @@ import {
 const managementNotice =
   'Readiness is a management decision, never an auditor opinion. A met rule means only that the recorded inputs pass this rule version as of the chosen time; it does not mean a criterion is met by operating controls or that an audit would succeed.';
 
+const accessReviewScopeStatusLabels: Record<string, string> = {
+  included: 'Included',
+  excluded: 'Excluded',
+  unresolved: 'Unresolved',
+};
+
 function inputValue(event: Event) {
   return (event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value;
 }
@@ -232,6 +238,90 @@ function AssessmentSummaryCard({ assessment }: { assessment: ReadinessAssessment
             </tbody>
           </table>
           <p className="readiness-fingerprint">Input fingerprint: {assessment.inputFingerprint}</p>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccessReviewScopeCard({ assessment }: { assessment: ReadinessAssessment }) {
+  const sourceTruncated = assessment.gaps.some(
+    (gap) => gap.kind === 'source_truncated' && gap.subject === 'applications_access_review_scope'
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Access-review scope</CardTitle>
+        <CardDescription>
+          Per-system rows saved with this assessment as of {formatDateTime(assessment.asOf)}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Stack gap="sm">
+          {sourceTruncated ? (
+            <p role="note" className="readiness-notice">
+              This list is partial because the source was truncated. It contains only the rows captured in this assessment and does not represent
+              the full system population.
+            </p>
+          ) : null}
+          {assessment.accessReviewScopes.length === 0 ? (
+            <p>No per-system access-review scope rows were recorded in this assessment.</p>
+          ) : (
+            <table className="readiness-table">
+              <caption>Per-system access-review scope saved in this assessment</caption>
+              <thead>
+                <tr>
+                  <th scope="col">System instance</th>
+                  <th scope="col">Scope</th>
+                  <th scope="col">Review status</th>
+                  <th scope="col">Effective decision evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assessment.accessReviewScopes.map((scope) => {
+                  const decision = scope.effectiveDecision;
+                  return (
+                    <tr key={scope.systemInstanceId}>
+                      <td>
+                        <code>{scope.systemInstanceId}</code>
+                      </td>
+                      <td>{accessReviewScopeStatusLabels[scope.status] ?? scope.status.replaceAll('_', ' ')}</td>
+                      <td>{scope.reviewOverdue ? <strong>Overdue</strong> : 'Not overdue'}</td>
+                      <td>
+                        {scope.status === 'unresolved' ? (
+                          <p>No decision was effective at the assessment time.</p>
+                        ) : decision ? (
+                          <dl>
+                            <dt>Approved by</dt>
+                            <dd>{decision.approvedBy}</dd>
+                            <dt>Reason</dt>
+                            <dd>{decision.reason}</dd>
+                            <dt>Effective from</dt>
+                            <dd>{formatDateTime(decision.effectiveFrom)}</dd>
+                            {decision.reviewBy ? (
+                              <>
+                                <dt>Review by</dt>
+                                <dd>{formatDateTime(decision.reviewBy)}</dd>
+                              </>
+                            ) : null}
+                            {decision.waiverId ? (
+                              <>
+                                <dt>Waiver</dt>
+                                <dd>Separation-of-duties waiver recorded ({decision.waiverId})</dd>
+                              </>
+                            ) : null}
+                          </dl>
+                        ) : (
+                          <p>No effective decision details were recorded for this row.</p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </Stack>
       </CardContent>
     </Card>
@@ -554,6 +644,7 @@ function AssessmentDetail({
   return (
     <Stack gap="md">
       <AssessmentSummaryCard assessment={current} />
+      <AccessReviewScopeCard assessment={current} />
       <FindingsCard assessment={current} />
       <GapPlanCard programId={programId} assessment={current} onChanged={onChanged} />
       <DecisionCard programId={programId} assessment={current} isLatest={isLatest} onDecided={onChanged} />

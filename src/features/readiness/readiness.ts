@@ -70,6 +70,21 @@ export interface ReadinessDecision {
   waiverId: string | null;
 }
 
+export interface AccessReviewScopeDecision {
+  approvedBy: string;
+  reason: string;
+  effectiveFrom: string;
+  reviewBy: string | null;
+  waiverId: string | null;
+}
+
+export interface AccessReviewScope {
+  systemInstanceId: string;
+  status: string;
+  reviewOverdue: boolean;
+  effectiveDecision: AccessReviewScopeDecision | null;
+}
+
 export interface ReadinessAssessment {
   assessmentId: string;
   revision: number;
@@ -79,6 +94,7 @@ export interface ReadinessAssessment {
   inputs: ReadinessInput[];
   findings: ReadinessFinding[];
   gaps: ReadinessGap[];
+  accessReviewScopes: AccessReviewScope[];
   ruleMetCount: number;
   gapCount: number;
   runBy: string;
@@ -193,6 +209,20 @@ export async function getAssessment(programId: string, assessmentId: string): Pr
         gapId: item.gap_id,
       })),
     gaps: data.gaps.filter((item) => item !== null).map(toGap),
+    accessReviewScopes: (data.access_review_scopes ?? []).map((item) => ({
+      systemInstanceId: item.system_instance_id,
+      status: item.status,
+      reviewOverdue: item.review_overdue,
+      effectiveDecision: item.effective_decision
+        ? {
+            approvedBy: item.effective_decision.approved_by.display,
+            reason: item.effective_decision.reason,
+            effectiveFrom: item.effective_decision.effective_from,
+            reviewBy: item.effective_decision.review_by,
+            waiverId: item.effective_decision.separation_of_duties_waiver_id,
+          }
+        : null,
+    })),
     ruleMetCount: Number(data.rule_met_count),
     gapCount: Number(data.gap_count),
     runBy: data.run_by.display,

@@ -1,0 +1,812 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Bdgrz.Compliance.App",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/v1/tenants/{tenant_id}/programs/{program_id}/readiness/assessments/{assessment_id}": {
+      "get": {
+        "tags": [
+          "Readiness"
+        ],
+        "operationId": "getReadinessAssessment",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/CntrylPortiaHttpUnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "413": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "415": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/CntrylPortiaHttpProblemResponse"
+          }
+        },
+        "security": [
+          {
+            "BdgrzSessionCookie": []
+          },
+          {
+            "BdgrzBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800": {
+        "required": [
+          "tenant_id",
+          "program_id",
+          "assessment_id",
+          "revision",
+          "rule_version",
+          "as_of",
+          "edition_id",
+          "input_fingerprint",
+          "inputs",
+          "findings",
+          "gaps",
+          "rule_met_count",
+          "gap_count",
+          "run_by",
+          "run_at",
+          "decision"
+        ],
+        "type": [
+          "null",
+          "object"
+        ],
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assessment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "rule_version": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edition_id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "input_fingerprint": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "required": [
+                "family",
+                "status",
+                "record_count",
+                "explanation"
+              ],
+              "type": "object",
+              "properties": {
+                "family": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "record_count": {
+                  "pattern": "^-?(?:0|[1-9]\\d*)$",
+                  "type": [
+                    "integer",
+                    "string"
+                  ]
+                },
+                "explanation": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "required": [
+                "criterion_identifier",
+                "category",
+                "summary",
+                "rule_id",
+                "outcome",
+                "explanation",
+                "sources",
+                "gap_id"
+              ],
+              "type": "object",
+              "properties": {
+                "criterion_identifier": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "rule_id": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "required": [
+                      "kind",
+                      "id",
+                      "version"
+                    ],
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "version": {
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "gap_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ],
+                  "format": "uuid"
+                }
+              }
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "required": [
+                "gap_id",
+                "kind",
+                "subject",
+                "rule_id",
+                "explanation",
+                "sources"
+              ],
+              "type": "object",
+              "properties": {
+                "gap_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "rule_id": {
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800_1"
+                  }
+                },
+                "plan": {
+                  "required": [
+                    "gap_id",
+                    "owner_member_id",
+                    "target_date",
+                    "action",
+                    "planned_by",
+                    "planned_at"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "gap_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "owner_member_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "target_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "planned_by": {
+                      "required": [
+                        "kind",
+                        "id",
+                        "display"
+                      ],
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "display": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "planned_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "default": null
+                }
+              }
+            }
+          },
+          "rule_met_count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "gap_count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "run_by": {
+            "required": [
+              "kind",
+              "id",
+              "display"
+            ],
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "display": {
+                "type": "string"
+              }
+            }
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decision": {
+            "required": [
+              "decision_id",
+              "assessment_id",
+              "outcome",
+              "rationale",
+              "decider_member_id",
+              "decided_by",
+              "decided_at",
+              "separation_of_duties_waiver_id"
+            ],
+            "type": [
+              "null",
+              "object"
+            ],
+            "properties": {
+              "decision_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "assessment_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "outcome": {
+                "type": "string"
+              },
+              "rationale": {
+                "type": "string"
+              },
+              "decider_member_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "decided_by": {
+                "required": [
+                  "kind",
+                  "id",
+                  "display"
+                ],
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "display": {
+                    "type": "string"
+                  }
+                }
+              },
+              "decided_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "separation_of_duties_waiver_id": {
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "format": "uuid"
+              }
+            }
+          },
+          "type_i_entry_decision": {
+            "required": [
+              "decision_id",
+              "assessment_id",
+              "rule_version",
+              "as_of",
+              "input_fingerprint",
+              "outcome",
+              "rationale",
+              "unresolved_items",
+              "decider_member_id",
+              "decided_by",
+              "decided_at",
+              "separation_of_duties_waiver_id"
+            ],
+            "type": [
+              "null",
+              "object"
+            ],
+            "properties": {
+              "decision_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "assessment_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "rule_version": {
+                "type": "string"
+              },
+              "as_of": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "input_fingerprint": {
+                "type": "string"
+              },
+              "outcome": {
+                "type": "string"
+              },
+              "rationale": {
+                "type": "string"
+              },
+              "unresolved_items": {
+                "type": "array",
+                "items": {
+                  "required": [
+                    "gap_id",
+                    "kind",
+                    "subject",
+                    "rule_id",
+                    "explanation",
+                    "owner_member_id",
+                    "target_date",
+                    "acknowledged"
+                  ],
+                  "type": "object",
+                  "properties": {
+                    "gap_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "rule_id": {
+                      "type": "string"
+                    },
+                    "explanation": {
+                      "type": "string"
+                    },
+                    "owner_member_id": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "format": "uuid"
+                    },
+                    "target_date": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "format": "date"
+                    },
+                    "acknowledged": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "decider_member_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "decided_by": {
+                "required": [
+                  "kind",
+                  "id",
+                  "display"
+                ],
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "display": {
+                    "type": "string"
+                  }
+                }
+              },
+              "decided_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "separation_of_duties_waiver_id": {
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "format": "uuid"
+              },
+              "notice": {
+                "type": "string"
+              }
+            },
+            "default": null
+          },
+          "access_review_scopes": {
+            "type": "array",
+            "items": {
+              "required": [
+                "system_instance_id",
+                "status",
+                "review_overdue",
+                "effective_decision"
+              ],
+              "type": "object",
+              "properties": {
+                "system_instance_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "review_overdue": {
+                  "type": "boolean"
+                },
+                "effective_decision": {
+                  "required": [
+                    "tenant_id",
+                    "application_id",
+                    "system_instance_id",
+                    "system_instance_revision",
+                    "decision_id",
+                    "sequence",
+                    "decision",
+                    "reason",
+                    "effective_from",
+                    "review_by",
+                    "approved_by",
+                    "decided_at",
+                    "separation_of_duties_waiver_id"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "tenant_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "application_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "system_instance_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "system_instance_revision": {
+                      "pattern": "^-?(?:0|[1-9]\\d*)$",
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    "decision_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "sequence": {
+                      "pattern": "^-?(?:0|[1-9]\\d*)$",
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    "decision": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "effective_from": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "review_by": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "format": "date-time"
+                    },
+                    "approved_by": {
+                      "required": [
+                        "kind",
+                        "id",
+                        "display"
+                      ],
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "display": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "decided_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "separation_of_duties_waiver_id": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800_1": {
+        "required": [
+          "kind",
+          "id",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "CntrylPortiaHttpProblemResponse": {
+        "description": "Error",
+        "headers": {
+          "Portia-Transient": {
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "required": [
+                "type",
+                "title",
+                "status",
+                "detail",
+                "instance"
+              ],
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "format": "uri-reference"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "integer"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "instance": {
+                  "type": "string",
+                  "format": "uri-reference"
+                },
+                "transient": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CntrylPortiaHttpUnauthorizedResponse": {
+        "description": "Unauthorized",
+        "headers": {
+          "WWW-Authenticate": {
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Portia-Transient": {
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BdgrzSessionCookie": {
+        "type": "apiKey",
+        "description": "Bdgrz browser session. Actor, tenant membership and operation permissions are checked separately.",
+        "name": "bdgrz_session",
+        "in": "cookie"
+      },
+      "BdgrzBearer": {
+        "type": "http",
+        "description": "A Bdgrz session JWT or access token validated by this deployment's configured issuer and audience. Actor and operation permissions are checked separately.",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}
