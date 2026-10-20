@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createJourneyProgressEvent,
+  snapshotTenantReadinessEvents,
   summarizeTenantProvisioningState,
   summarizeTenantReadinessEvents,
   summarizeTenantReadinessResponse,
@@ -285,5 +286,48 @@ describe('first-journey progress diagnostics', () => {
     expect(JSON.stringify(states)).not.toMatch(
       /private-tenant-id|private-failure-code/
     );
+  });
+
+  it('ShouldAwaitPendingResponseBodyReadsBeforeTakingAReadinessSnapshot', async () => {
+    const events: JourneyReadinessApiEvent[] = [
+      { endpoint: 'tenant-provisioning-status', kind: 'started' },
+      { endpoint: 'tenant-provisioning-status', kind: 'response', status: 200 },
+    ];
+    const pendingBodyReads = new Set<Promise<void>>();
+    let finishBodyRead!: () => void;
+    let pendingBodyRead: Promise<void>;
+    pendingBodyRead = new Promise<void>((resolve) => {
+      finishBodyRead = resolve;
+    })
+      .then(() => {
+        events.push({
+          endpoint: 'tenant-provisioning-status',
+          kind: 'provisioning-state',
+          state: 'completed',
+        });
+      })
+      .finally(() => pendingBodyReads.delete(pendingBodyRead));
+    pendingBodyReads.add(pendingBodyRead);
+
+    const snapshot = snapshotTenantReadinessEvents(events, pendingBodyReads);
+    let settled = false;
+    void snapshot.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finishBodyRead();
+    await expect(snapshot).resolves.toEqual([
+      {
+        endpoint: 'tenant-provisioning-status',
+        started: 1,
+        responseStatuses: [200],
+        provisioningStates: ['completed'],
+        finished: 0,
+        failed: 0,
+        inFlight: 1,
+      },
+    ]);
   });
 });

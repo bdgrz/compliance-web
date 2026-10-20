@@ -369,6 +369,16 @@ export function summarizeTenantReadinessEvents(
   }));
 }
 
+export async function snapshotTenantReadinessEvents(
+  events: readonly JourneyReadinessApiEvent[],
+  pendingBodyReads: ReadonlySet<Promise<void>>
+): Promise<JourneyReadinessApiRequestState[]> {
+  while (pendingBodyReads.size > 0) {
+    await Promise.allSettled(pendingBodyReads);
+  }
+  return summarizeTenantReadinessEvents(events);
+}
+
 function isReadinessApiEndpoint(
   endpoint: string
 ): endpoint is JourneyReadinessApiEndpoint {

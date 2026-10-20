@@ -18,13 +18,13 @@ import type {
 } from '../src/api-client/operations.js';
 import {
   createJourneyProgressEvent,
+  snapshotTenantReadinessEvents,
   type JourneyParticipant,
   type JourneyReadinessApiEvent,
   type JourneyProgressDiagnostics,
   type JourneyReadinessApiRequestState,
   type JourneyStepName,
   summarizeTenantReadinessEndpoint,
-  summarizeTenantReadinessEvents,
   summarizeTenantProvisioningState,
 } from '../src/test-support/first-journey-progress.js';
 import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
@@ -79,10 +79,11 @@ async function checkpoint(
 }
 
 function observeTenantReadinessRequests(page: Page): {
-  snapshot: () => JourneyReadinessApiRequestState[];
+  snapshot: () => Promise<JourneyReadinessApiRequestState[]>;
   dispose: () => void;
 } {
   const observed: JourneyReadinessApiEvent[] = [];
+  const pendingBodyReads = new Set<Promise<void>>();
   const append = (
     request: Request,
     kind: 'started' | 'response' | 'finished' | 'failed',
@@ -118,9 +119,12 @@ function observeTenantReadinessRequests(page: Page): {
         state: summarizeTenantProvisioningState(payload),
       });
     };
-    void response.json().then(appendProvisioningState, () =>
-      appendProvisioningState(undefined)
-    );
+    let pendingBodyRead: Promise<void>;
+    pendingBodyRead = Promise.resolve()
+      .then(() => response.json())
+      .then(appendProvisioningState, () => appendProvisioningState(undefined))
+      .finally(() => pendingBodyReads.delete(pendingBodyRead));
+    pendingBodyReads.add(pendingBodyRead);
   };
   const onRequestFinished = (request: Request) => append(request, 'finished');
   const onRequestFailed = (request: Request) => append(request, 'failed');
@@ -129,7 +133,7 @@ function observeTenantReadinessRequests(page: Page): {
   page.on('requestfinished', onRequestFinished);
   page.on('requestfailed', onRequestFailed);
   return {
-    snapshot: () => summarizeTenantReadinessEvents(observed),
+    snapshot: () => snapshotTenantReadinessEvents(observed, pendingBodyReads),
     dispose: () => {
       page.off('request', onRequest);
       page.off('response', onResponse);
@@ -371,42 +375,61 @@ async function signInAndVerify(
 async function waitForOrganizationReady(
   page: Page,
   slug: string,
-  readinessRequests: () => JourneyReadinessApiRequestState[]
+  readinessRequests: () => Promise<JourneyReadinessApiRequestState[]>
 ): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  const timeoutMs = 60_000;
+  const checkStatusIntervalMs = 2_000;
+  const pollIntervalMs = 250;
+  const progressIntervalMs = 5_000;
+  const deadline = Date.now() + timeoutMs;
+  let nextStatusCheckAt = 0;
+  let nextProgressAt = 0;
+
+  while (Date.now() < deadline) {
     if (new URL(page.url()).pathname === `/${slug}`) {
       await checkpoint(page, 'founder organization page opened', {
-        readinessRequests: readinessRequests(),
+        readinessRequests: await readinessRequests(),
       });
       return;
     }
+
+    const checkingStatus = page.getByRole('button', {
+      name: 'Checking status…',
+      exact: true,
+    });
     const checkStatus = page.getByRole('button', { name: 'Check status' });
-    if (await checkStatus.isVisible().catch(() => false)) {
-      await checkStatus.click();
+    const checking = await checkingStatus.isVisible().catch(() => false);
+    if (!checking && Date.now() >= nextStatusCheckAt) {
+      const visible = await checkStatus.isVisible().catch(() => false);
+      const enabled = visible && (await checkStatus.isEnabled().catch(() => false));
+      if (enabled) {
+        try {
+          await checkStatus.click({ timeout: 1_000 });
+        } catch {
+          // The page can move into its disabled checking state between inspection and click.
+        }
+        nextStatusCheckAt = Date.now() + checkStatusIntervalMs;
+      }
     }
-    await page.waitForTimeout(500);
-    if (attempt === 0 || attempt === 19) {
+
+    await page.waitForTimeout(
+      Math.max(0, Math.min(pollIntervalMs, deadline - Date.now()))
+    );
+    if (Date.now() >= nextProgressAt) {
       await checkpoint(
         page,
         'founder organization provisioning status checked',
-        { readinessRequests: readinessRequests() }
+        { readinessRequests: await readinessRequests() }
       );
+      nextProgressAt = Date.now() + progressIntervalMs;
     }
   }
   await checkpoint(page, 'founder organization provisioning status checked', {
-    readinessRequests: readinessRequests(),
+    readinessRequests: await readinessRequests(),
   });
-  try {
-    await page.waitForURL(`**/${slug}`, { timeout: 30_000 });
-  } catch {
-    await checkpoint(page, 'founder organization provisioning status checked', {
-      readinessRequests: readinessRequests(),
-    });
-    throw new Error(
-      'The organization workspace did not open after readiness checks.'
-    );
-  }
-  await checkpoint(page, 'founder organization page opened');
+  throw new Error(
+    'The organization workspace did not open after readiness checks.'
+  );
 }
 
 async function findMemberUserId(
