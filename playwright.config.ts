@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-export default defineConfig({
+export const playwrightConfig = defineConfig({
   testDir: './e2e',
   testMatch: '**/*.journey.ts',
   fullyParallel: false,
@@ -20,3 +20,5 @@ export default defineConfig({
     trace: 'off',
   },
 });
+
+export default playwrightConfig;

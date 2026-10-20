@@ -1,21 +1,23 @@
 import net from 'node:net';
 
 import { expect, test, type Page, type Response } from '@playwright/test';
+import type {
+  CreateBoundaryResponse200,
+  CreateProgramResponse200,
+  GetMemberAccessResponse200,
+  GrantAccessBody,
+  ListRolesResponse200,
+  ListTenantMembersResponse200,
+  RegisterTenantResponse200,
+} from '../src/api-client/operations.js';
 
-type MemberRosterItem = {
-  user_id: string;
-  verified_email_address?: string | null;
-};
-
-type MemberRosterPage = {
-  items?: (MemberRosterItem | null)[];
-  next_cursor?: string | null;
-};
-
-type TenantResponse = { tenant_id: string };
-type ProgramResponse = { program_id: string };
-type BoundaryResponse = { boundary_id: string };
-type MemberAccessResponse = { member_id: string };
+type MemberRosterPage = NonNullable<ListTenantMembersResponse200>;
+type TenantResponse = NonNullable<RegisterTenantResponse200>;
+type ProgramResponse = NonNullable<CreateProgramResponse200>;
+type BoundaryResponse = NonNullable<CreateBoundaryResponse200>;
+type MemberAccessResponse = NonNullable<GetMemberAccessResponse200>;
+type RoleCatalog = NonNullable<ListRolesResponse200>;
+type AccessGrantProposal = NonNullable<GrantAccessBody['proposal']>;
 type MailboxReply = { status: string; token?: string };
 
 const mailboxSocket = process.env.COMPLIANCE_E2E_MAILBOX_SOCKET;
@@ -150,12 +152,19 @@ async function verifyEmail(page: Page, email: string): Promise<void> {
         .getByRole('button', { name: 'Send verification code' })
         .click();
       const response = await issue;
-      expect(response.ok()).toBeTruthy();
+      expect(response.status()).toBe(204);
     }
   );
 
   await page.getByLabel('Verification code').fill(code);
+  const verification = page.waitForResponse(
+    apiResponse(
+      'POST',
+      /\/api\/v1\/users\/[^/]+\/email-addresses\/[^/]+\/verifications$/
+    )
+  );
   await page.getByRole('button', { name: 'Verify email address' }).click();
+  expect((await verification).status()).toBe(204);
   await expect(
     page.getByRole('status').filter({
       hasText: 'Your email address is verified.',
@@ -169,7 +178,11 @@ async function verifyEmail(page: Page, email: string): Promise<void> {
 async function signInAndVerify(page: Page, email: string): Promise<void> {
   await page.goto('/developer-login?returnUrl=%2Forganizations');
   await page.getByLabel('Email address', { exact: true }).fill(email);
+  const continued = page.waitForResponse(
+    apiResponse('POST', /\/api\/v1\/developer-user-sessions$/)
+  );
   await page.getByRole('button', { name: 'Continue' }).click();
+  expect((await continued).status()).toBe(200);
   await page.waitForURL('**/organizations');
   await expect(
     page.getByRole('heading', { name: 'No organization access yet' })
@@ -246,6 +259,99 @@ async function showMemberAccess(
   return body.member_id;
 }
 
+async function grantOrganizationAdmin(
+  page: Page,
+  slug: string,
+  tenantId: string,
+  email: string,
+  userId: string,
+  memberId: string
+): Promise<void> {
+  await page.goto(`/${slug}/programs`);
+  await expect(
+    page.getByRole('heading', { name: 'Programs are not available to you' })
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Members', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+  const memberRow = page.getByRole('listitem').filter({ hasText: email });
+  await expect(memberRow.getByRole('link')).toBeVisible();
+
+  const roleCatalogRequest = page.waitForResponse(
+    apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/roles$/)
+  );
+  await memberRow.getByRole('link').click();
+  await page.waitForURL(`**/${slug}/members/${userId}`);
+  const roleCatalogResponse = await roleCatalogRequest;
+  expect(roleCatalogResponse.ok()).toBeTruthy();
+  const roleCatalog = (await roleCatalogResponse.json()) as RoleCatalog;
+  const organizationAdminRole = (roleCatalog.items ?? []).find(
+    (role) => role?.name === 'Org Admin'
+  );
+  expect(organizationAdminRole?.role_id).toBeTruthy();
+
+  await page
+    .getByLabel('Role', { exact: true })
+    .selectOption({ label: 'Org Admin' });
+  await page
+    .getByLabel('Scope', { exact: true })
+    .selectOption({ label: 'Whole organization' });
+
+  const grantResponsePromise = page.waitForResponse(
+    apiResponse('POST', /\/api\/v1\/tenants\/[^/]+\/access-grants\/[^/]+$/)
+  );
+  await page.getByRole('button', { name: 'Grant access' }).click();
+  const grantResponse = await grantResponsePromise;
+  expect(grantResponse.status()).toBe(204);
+
+  const grantId = pathOf(grantResponse).match(/\/access-grants\/([^/]+)$/)?.[1];
+  expect(grantId).toBeTruthy();
+  const proposal = (grantResponse.request().postDataJSON() as GrantAccessBody)
+    .proposal as AccessGrantProposal;
+  expect(proposal.principal).toEqual({ kind: 'member', id: memberId });
+  expect(proposal.role_id).toBe(organizationAdminRole!.role_id);
+  expect(proposal.scope).toEqual({ kind: 'organization', id: tenantId });
+  expect(proposal.source).toEqual({ kind: 'manual', id: grantId });
+  expect(proposal.effective_until).toBeNull();
+  expect(Date.parse(proposal.effective_from)).not.toBeNaN();
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'Granted Org Admin on Whole organization.',
+    })
+  ).toBeVisible();
+
+  // The grant command is accepted before its authorization projection is guaranteed to be
+  // visible. Refresh through the real access page until the server reports the effective grant.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const accessRequest = page.waitForResponse(
+      apiResponse(
+        'GET',
+        new RegExp(`/api/v1/tenants/[^/]+/members/${userId}/access$`)
+      )
+    );
+    await page.goto(`/${slug}/members/${userId}`);
+    const accessResponse = await accessRequest;
+    expect(accessResponse.ok()).toBeTruthy();
+    const access = (await accessResponse.json()) as MemberAccessResponse;
+    const effectiveGrant = access.grant_paths.some(
+      (path) =>
+        path?.is_effective &&
+        path.role_name === 'Org Admin' &&
+        path.grant.terms.principal.kind === 'member' &&
+        path.grant.terms.principal.id === memberId &&
+        path.grant.terms.scope.kind === 'organization' &&
+        path.grant.terms.scope.id === tenantId
+    );
+    if (effectiveGrant) {
+      await expect(
+        page.getByText('Org Admin on Whole organization', { exact: false })
+      ).toBeVisible();
+      return;
+    }
+    await page.waitForTimeout(1000);
+  }
+  throw new Error('The organization-wide Org Admin grant was not projected.');
+}
+
 async function inviteMember(
   page: Page,
   slug: string,
@@ -266,7 +372,7 @@ async function inviteMember(
       );
       await page.getByRole('button', { name: 'Send invitation' }).click();
       const response = await invited;
-      expect(response.ok()).toBeTruthy();
+      expect(response.status()).toBe(204);
       await expect(
         page
           .getByRole('status')
@@ -294,7 +400,7 @@ async function acceptInvitation(
   );
   await page.getByRole('button', { name: 'Accept invitation' }).click();
   const response = await accepted;
-  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(204);
   await expect(
     page.getByRole('status').filter({
       hasText: 'Your invitation acceptance was received.',
@@ -331,7 +437,7 @@ async function grantProgramRole(
   );
   await page.getByRole('button', { name: 'Grant access' }).click();
   const response = await granted;
-  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(204);
   await expect(
     page.getByRole('status').filter({
       hasText: `Granted Compliance Lead on Program: ${programName}.`,
@@ -372,9 +478,10 @@ async function createBoundary(
   );
   await page.getByRole('button', { name: 'Create draft' }).click();
   const response = await created;
-  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(200);
   const body = (await response.json()) as BoundaryResponse;
   expect(body.boundary_id).toBeTruthy();
+  expect(body.draft_version_id).toBeTruthy();
   await page.waitForURL(
     `**/${slug}/programs/${programId}/boundaries/${body.boundary_id}`
   );
@@ -411,19 +518,31 @@ test('first organization admin provisions a scoped team journey and reassignment
     );
     await founder.getByRole('button', { name: 'Create organization' }).click();
     const registerResponse = await registered;
-    expect(registerResponse.ok()).toBeTruthy();
+    expect(registerResponse.status()).toBe(200);
     const tenant = (await registerResponse.json()) as TenantResponse;
     expect(tenant.tenant_id).toBeTruthy();
+    expect(tenant.slug).toBe(slug);
     await waitForOrganizationReady(founder, slug);
     await expect(founder.getByText(orgName, { exact: true })).toBeVisible();
 
     const founderUserId = await findMemberUserId(founder, slug, founderEmail);
-    await showMemberAccess(
+    const founderMemberId = await showMemberAccess(
       founder,
       slug,
       founderUserId,
       'Administrators',
       'Org Admin'
+    );
+
+    // The built-in Administrators team alone cannot create programs. Grant Org Admin
+    // organization-wide from the member access screen before starting the first program.
+    await grantOrganizationAdmin(
+      founder,
+      slug,
+      tenant.tenant_id,
+      founderEmail,
+      founderUserId,
+      founderMemberId
     );
 
     const adminInvitation = await inviteMember(
@@ -440,7 +559,7 @@ test('first organization admin provisions a scoped team journey and reassignment
       slug
     );
     const adminUserId = await findMemberUserId(founder, slug, adminEmail);
-    const founderMemberId = await showMemberAccess(
+    await showMemberAccess(
       founder,
       slug,
       founderUserId,
@@ -488,7 +607,7 @@ test('first organization admin provisions a scoped team journey and reassignment
     );
     await founder.getByRole('button', { name: 'Start program' }).click();
     const programResponse = await programCreated;
-    expect(programResponse.ok()).toBeTruthy();
+    expect(programResponse.status()).toBe(200);
     const program = (await programResponse.json()) as ProgramResponse;
     expect(program.program_id).toBeTruthy();
     await founder.waitForURL(`**/${slug}/programs/${program.program_id}`);
@@ -526,7 +645,7 @@ test('first organization admin provisions a scoped team journey and reassignment
     await founder
       .getByRole('button', { name: 'Assign responsibility' })
       .click();
-    expect((await founderAssignment).ok()).toBeTruthy();
+    expect((await founderAssignment).status()).toBe(204);
     await expect(
       founder
         .getByRole('status')
@@ -549,7 +668,7 @@ test('first organization admin provisions a scoped team journey and reassignment
       .getByRole('button', { name: 'Assign responsibility' })
       .click();
     const deniedResponse = await deniedAssignment;
-    expect([403, 409]).toContain(deniedResponse.status());
+    expect(deniedResponse.status()).toBe(409);
     await expect(founder.getByRole('alert')).toBeVisible();
 
     const founderAccess = admin.waitForResponse(
@@ -564,10 +683,19 @@ test('first organization admin provisions a scoped team journey and reassignment
     const founderAccessBody =
       (await founderAccessResponse.json()) as MemberAccessResponse;
     expect(founderAccessBody.member_id).toBe(founderMemberId);
+    const suspension = admin.waitForResponse(
+      apiResponse(
+        'POST',
+        new RegExp(
+          `/api/v1/tenants/[^/]+/members/${founderUserId}/suspensions$`
+        )
+      )
+    );
     await admin
       .getByLabel('Reason for suspension')
       .fill('First journey reassignment exercise.');
     await admin.getByRole('button', { name: 'Suspend member' }).click();
+    expect((await suspension).status()).toBe(204);
     await expect(
       admin
         .getByRole('status')
@@ -612,16 +740,23 @@ test('first organization admin provisions a scoped team journey and reassignment
       apiResponse('POST', /\/api\/v1\/tenants\/[^/]+\/responsibilities$/)
     );
     await admin.getByRole('button', { name: 'Assign responsibility' }).click();
-    expect((await reassigned).ok()).toBeTruthy();
+    expect((await reassigned).status()).toBe(204);
     await expect(
       admin.getByRole('status').filter({ hasText: 'Responsibility assigned.' })
     ).toBeVisible();
 
     const founderAssignmentButton = admin.getByRole('button', {
-      name: new RegExp(`Revoke Control owner ${founderMemberId.slice(0, 8)}`),
+      name: new RegExp(`Revoke control owner ${founderMemberId.slice(0, 8)}`),
     });
     await expect(founderAssignmentButton).toBeVisible();
+    const revokedAssignment = admin.waitForResponse(
+      apiResponse(
+        'POST',
+        /\/api\/v1\/tenants\/[^/]+\/responsibilities\/[^/]+\/revocation$/
+      )
+    );
     await founderAssignmentButton.click();
+    expect((await revokedAssignment).status()).toBe(204);
     await expect(
       admin.getByRole('status').filter({ hasText: 'Responsibility revoked.' })
     ).toBeVisible();

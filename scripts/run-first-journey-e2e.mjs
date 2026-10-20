@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +18,7 @@ const viteUrl = 'http://127.0.0.1:5173';
 let host;
 let vite;
 let playwright;
+let nugetPackages;
 
 function resolveHostProject() {
   const configured = process.env.COMPLIANCE_E2E_HOST_PROJECT;
@@ -42,13 +45,44 @@ function resolveHostProject() {
 }
 
 async function startBackendHost() {
+  nugetPackages = await mkdtemp(
+    path.join(os.tmpdir(), 'bdgrz-first-journey-nuget-')
+  );
+  const hostEnvironment = {
+    ...process.env,
+    NUGET_PACKAGES: nugetPackages,
+  };
+  const restore = spawn(
+    'dotnet',
+    ['restore', hostProject, '--locked-mode', '--packages', nugetPackages],
+    {
+      cwd: path.dirname(hostProject),
+      env: hostEnvironment,
+      stdio: 'inherit',
+    }
+  );
+  const restoreExitCode = await new Promise((resolve, reject) => {
+    restore.once('error', reject);
+    childExit(restore).then(resolve);
+  });
+  if (restoreExitCode !== 0) {
+    throw new Error(
+      `The browser E2E host locked restore failed (${restoreExitCode}).`
+    );
+  }
+
   host = spawn(
     'dotnet',
-    ['run', '--project', hostProject, '--no-launch-profile'],
-    { cwd: path.dirname(hostProject), stdio: ['pipe', 'pipe', 'inherit'] }
+    ['run', '--project', hostProject, '--no-launch-profile', '--no-restore'],
+    {
+      cwd: path.dirname(hostProject),
+      env: hostEnvironment,
+      stdio: ['pipe', 'pipe', 'inherit'],
+    }
   );
 
   const ready = new Promise((resolve, reject) => {
+    const startupOutput = [];
     const lines = createInterface({ input: host.stdout });
     const timer = setTimeout(
       () => {
@@ -66,9 +100,13 @@ async function startBackendHost() {
       try {
         message = JSON.parse(line);
       } catch {
+        startupOutput.push(line);
         return;
       }
-      if (message.type !== 'ready') return;
+      if (message.type !== 'ready') {
+        startupOutput.push(line);
+        return;
+      }
 
       clearTimeout(timer);
       lines.close();
@@ -101,11 +139,15 @@ async function startBackendHost() {
       clearTimeout(timer);
       reject(error);
     });
-    host.once('exit', (code) => {
+    host.once('exit', (code, signal) => {
       clearTimeout(timer);
+      const output =
+        startupOutput.length > 0
+          ? `\nHost output before readiness:\n${startupOutput.join('\n')}`
+          : '';
       reject(
         new Error(
-          `The browser E2E host exited before readiness (${code ?? 'signal'}).`
+          `The browser E2E host exited before readiness (${code ?? signal ?? 'unknown'}).${output}`
         )
       );
     });
@@ -136,14 +178,25 @@ async function waitForVite() {
 let exitCode = 1;
 try {
   const ready = await startBackendHost();
-  vite = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      COMPLIANCE_API_PROXY_TARGET: ready.apiBaseUri,
-    },
-    stdio: 'inherit',
-  });
+  const viteCli = path.join(
+    projectRoot,
+    'node_modules/vite/dist/vite/node/cli.js'
+  );
+  if (!existsSync(viteCli)) {
+    throw new Error('Vite CLI is not installed in the web workspace.');
+  }
+  vite = spawn(
+    process.execPath,
+    [viteCli, 'dev', '--host', '127.0.0.1', '--strictPort'],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        COMPLIANCE_API_PROXY_TARGET: ready.apiBaseUri,
+      },
+      stdio: 'inherit',
+    }
+  );
   await waitForVite();
 
   const playwrightCli = path.join(
@@ -184,6 +237,9 @@ try {
   await stop(playwright);
   await stop(vite);
   await stop(host, { command: 'shutdown' });
+  if (nugetPackages) {
+    await rm(nugetPackages, { recursive: true, force: true });
+  }
 }
 
 process.exitCode = exitCode;

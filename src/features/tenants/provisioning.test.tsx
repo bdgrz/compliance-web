@@ -6,7 +6,11 @@ import { accessibilityViolations } from '../../accessibility/axe.js';
 import { stubApi } from '../../test-support/api-stub.js';
 import { CreateTenantPage } from './pages/create-tenant.js';
 import { SelectTenantPage } from './pages/select-tenant.js';
-import { clearActiveTenant, currentTenant, readRememberedSlug } from './tenants.js';
+import {
+  clearActiveTenant,
+  currentTenant,
+  readRememberedSlug,
+} from './tenants.js';
 
 const userId = '0190a1b2-0000-7000-8000-0000000000a1';
 let api: ReturnType<typeof stubApi>;
@@ -124,6 +128,46 @@ describe('no-access state (R1-15 frontend #176)', () => {
     expect(
       api.bodies.find((b) => b.path === `${path}/verifications`)?.body
     ).toEqual({ token: 'proof-from-mailbox' });
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldOfferOrganizationCreationAfterAcceptedProofBeforeEmailListRefreshes', async () => {
+    // Arrange
+    noMemberships();
+    emails(false);
+    const path = `/api/v1/users/${userId}/email-addresses/casey%40acme.test`;
+    api.reply(`POST ${path}`, 204);
+    api.reply(`POST ${path}/challenges`, 204);
+    api.reply(`${path}/challenges/status`, 200, {
+      delivery_status: 'delivered',
+      expires_at: '2026-10-02T00:15:00Z',
+    });
+    api.reply(`POST ${path}/verifications`, 204);
+    const container = mount(() => <SelectTenantPage userId={userId} />);
+    await vi.waitFor(() =>
+      expect(container.querySelector('input[type="email"]')).not.toBeNull()
+    );
+
+    // Act
+    setField(container, 'Email address', 'casey@acme.test');
+    container
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain('Verification code')
+    );
+    setField(container, 'Verification code', 'proof-from-mailbox');
+    container
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    // Assert
+    await vi.waitFor(() =>
+      expect(container.textContent).toContain('Your email address is verified')
+    );
+    expect(
+      container.querySelector('a[href="/organizations/new"]')
+    ).not.toBeNull();
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
@@ -435,7 +479,9 @@ describe('self-service organization creation (R1-15 frontend #176)', () => {
 
     // Assert
     expect(assign).not.toHaveBeenCalled();
-    expect(api.requested.filter((path) => path === provisioningPath)).toHaveLength(2);
+    expect(
+      api.requested.filter((path) => path === provisioningPath)
+    ).toHaveLength(2);
     expect(registrations()).toHaveLength(1);
   });
 
