@@ -7,5 +7,6 @@ describe('first-journey browser artifact policy', () => {
     expect(playwrightConfig.use?.screenshot).toBe('off');
     expect(playwrightConfig.use?.video).toBe('off');
     expect(playwrightConfig.use?.trace).toBe('off');
+    expect(playwrightConfig.preserveOutput).toBe('never');
   });
 });

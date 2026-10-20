@@ -7,6 +7,11 @@ host's private Unix socket; codes stay in process memory and are entered through
 the real forms. It does not call a debug token endpoint or disable TLS checks.
 Screenshots, video, and Playwright traces are disabled so filled one-time codes
 cannot be saved in browser artifacts; a Vitest guard covers these settings.
+Named progress lines are emitted to stderr for timeout diagnosis. Each line
+contains only a fixed step label, the current URL pathname (query and fragment
+removed), and exact allowlisted visible UI phrases. Email addresses,
+form values, one-time codes, request bodies, and other page text are filtered
+out before the line is written.
 
 From the web repo, run `npm run e2e:first-journey`. The runner starts
 `Compliance.BrowserE2EHost` from the sibling `compliance-core` checkout (or the
