@@ -128,17 +128,29 @@ export type JourneyReadinessApiResponse = {
   status: number;
 };
 
+export type JourneyProvisioningState =
+  | 'provisioning'
+  | 'completed'
+  | 'rejected'
+  | 'unknown';
+
 export type JourneyReadinessApiEvent =
   | {
       endpoint: JourneyReadinessApiEndpoint;
       kind: 'started' | 'finished' | 'failed';
     }
-  | { endpoint: JourneyReadinessApiEndpoint; kind: 'response'; status: number };
+  | { endpoint: JourneyReadinessApiEndpoint; kind: 'response'; status: number }
+  | {
+      endpoint: 'tenant-provisioning-status';
+      kind: 'provisioning-state';
+      state: JourneyProvisioningState;
+    };
 
 export type JourneyReadinessApiRequestState = {
   endpoint: JourneyReadinessApiEndpoint;
   started: number;
   responseStatuses: number[];
+  provisioningStates?: JourneyProvisioningState[];
   finished: number;
   failed: number;
   inFlight: number;
@@ -221,11 +233,18 @@ export function createJourneyProgressEvent(
           return [];
         }
         const responseStatuses = request.responseStatuses.filter(isHttpStatus);
+        const provisioningStates = request.provisioningStates?.filter(
+          isProvisioningState
+        );
         return [
           {
             endpoint: request.endpoint,
             started: request.started,
             responseStatuses,
+            ...(request.endpoint === 'tenant-provisioning-status' &&
+            provisioningStates?.length
+              ? { provisioningStates }
+              : {}),
             finished: request.finished,
             failed: request.failed,
             inFlight: Math.max(
@@ -276,6 +295,17 @@ export function summarizeTenantReadinessResponse(
   return endpoint && isHttpStatus(status) ? { endpoint, status } : null;
 }
 
+export function summarizeTenantProvisioningState(
+  payload: unknown
+): JourneyProvisioningState {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return 'unknown';
+  }
+
+  const status = (payload as Record<string, unknown>).status;
+  return isKnownProvisioningState(status) ? status : 'unknown';
+}
+
 export function summarizeTenantReadinessEndpoint(
   href: string
 ): JourneyReadinessApiEndpoint | null {
@@ -323,6 +353,13 @@ export function summarizeTenantReadinessEvents(
     else if (event.kind === 'failed') state.failed += 1;
     else if (event.kind === 'response' && isHttpStatus(event.status)) {
       state.responseStatuses.push(event.status);
+    } else if (
+      event.kind === 'provisioning-state' &&
+      event.endpoint === 'tenant-provisioning-status' &&
+      isProvisioningState(event.state)
+    ) {
+      state.provisioningStates ??= [];
+      state.provisioningStates.push(event.state);
     }
   }
 
@@ -345,6 +382,21 @@ function isReadinessApiEndpoint(
 
 function isHttpStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 100 && status <= 599;
+}
+
+function isKnownProvisioningState(value: unknown): value is Exclude<
+  JourneyProvisioningState,
+  'unknown'
+> {
+  return (
+    value === 'provisioning' || value === 'completed' || value === 'rejected'
+  );
+}
+
+function isProvisioningState(
+  value: unknown
+): value is JourneyProvisioningState {
+  return isKnownProvisioningState(value) || value === 'unknown';
 }
 
 function isNonnegativeInteger(value: number): boolean {

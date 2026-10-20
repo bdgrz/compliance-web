@@ -25,6 +25,7 @@ import {
   type JourneyStepName,
   summarizeTenantReadinessEndpoint,
   summarizeTenantReadinessEvents,
+  summarizeTenantProvisioningState,
 } from '../src/test-support/first-journey-progress.js';
 import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
 
@@ -97,8 +98,30 @@ function observeTenantReadinessRequests(page: Page): {
     );
   };
   const onRequest = (request: Request) => append(request, 'started');
-  const onResponse = (response: Response) =>
-    append(response.request(), 'response', response.status());
+  const onResponse = (response: Response) => {
+    const request = response.request();
+    append(request, 'response', response.status());
+    if (
+      request.method() !== 'GET' ||
+      summarizeTenantReadinessEndpoint(request.url()) !==
+        'tenant-provisioning-status' ||
+      observed.length >= 240
+    ) {
+      return;
+    }
+
+    const appendProvisioningState = (payload: unknown) => {
+      if (observed.length >= 240) return;
+      observed.push({
+        endpoint: 'tenant-provisioning-status',
+        kind: 'provisioning-state',
+        state: summarizeTenantProvisioningState(payload),
+      });
+    };
+    void response.json().then(appendProvisioningState, () =>
+      appendProvisioningState(undefined)
+    );
+  };
   const onRequestFinished = (request: Request) => append(request, 'finished');
   const onRequestFailed = (request: Request) => append(request, 'failed');
   page.on('request', onRequest);

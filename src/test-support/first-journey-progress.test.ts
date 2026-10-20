@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createJourneyProgressEvent,
+  summarizeTenantProvisioningState,
   summarizeTenantReadinessEvents,
   summarizeTenantReadinessResponse,
   type JourneyReadinessApiEvent,
@@ -220,5 +221,69 @@ describe('first-journey progress diagnostics', () => {
         inFlight: 0,
       },
     ]);
+  });
+
+  it('ShouldSummarizeOnlyTheProvisioningResponseEnum', () => {
+    const events = [
+      { endpoint: 'tenant-provisioning-status', kind: 'started' },
+      { endpoint: 'tenant-provisioning-status', kind: 'response', status: 200 },
+      {
+        endpoint: 'tenant-provisioning-status',
+        kind: 'provisioning-state',
+        state: 'completed',
+      },
+      { endpoint: 'tenant-provisioning-status', kind: 'finished' },
+    ] satisfies JourneyReadinessApiEvent[];
+
+    expect(summarizeTenantReadinessEvents(events)).toEqual([
+      {
+        endpoint: 'tenant-provisioning-status',
+        started: 1,
+        responseStatuses: [200],
+        provisioningStates: ['completed'],
+        finished: 1,
+        failed: 0,
+        inFlight: 0,
+      },
+    ]);
+  });
+
+  it('ShouldKeepOnlyTheAllowlistedProvisioningEnumFromResponseJson', () => {
+    const states = [
+      summarizeTenantProvisioningState({
+        tenant_id: 'private-tenant-id',
+        status: 'provisioning',
+        failure_code: 'private-failure-code',
+      }),
+      summarizeTenantProvisioningState({
+        tenant_id: 'private-tenant-id',
+        status: 'completed',
+        failure_code: null,
+      }),
+      summarizeTenantProvisioningState({
+        tenant_id: 'private-tenant-id',
+        status: 'rejected',
+        failure_code: 'private-failure-code',
+      }),
+      summarizeTenantProvisioningState({
+        tenant_id: 'private-tenant-id',
+        status: 'pending',
+        failure_code: 'private-failure-code',
+      }),
+      summarizeTenantProvisioningState(null),
+      summarizeTenantProvisioningState('completed'),
+    ];
+
+    expect(states).toEqual([
+      'provisioning',
+      'completed',
+      'rejected',
+      'unknown',
+      'unknown',
+      'unknown',
+    ]);
+    expect(JSON.stringify(states)).not.toMatch(
+      /private-tenant-id|private-failure-code/
+    );
   });
 });
