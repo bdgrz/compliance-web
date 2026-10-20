@@ -1,0 +1,110 @@
+{
+  "source_backend_head": "59d3744a6f3bc03cab8a176c7f34a8bcd0eea90a",
+  "source_contract_issue": "bdgrz/compliance-core#982 (closed; backend merge commit ec7cb7fa11542176baa77c8b8fb408b1f0510caf)",
+  "source_export": "Canonical Compliance.OpenApiExport output emitted from source_backend_head",
+  "whole_export_sha256": "90b6b0c1025cd7ab6ddf8930686feb26617aa18be419c1da4ed950937dc7c240",
+  "fragment": "readiness-assessment.json",
+  "source_fragment_sha256_before_normalization": "c96f400846911e72cd1e0203125e78787f190635ae3a479413390db076f0e3cd",
+  "fragment_sha256": "c742cb25a46e53c6eac30174a3a8e485a65836552cc5bcb9b5c5c3e924d8bbd8",
+  "operation_ids": [
+    "getReadinessAssessment"
+  ],
+  "components": {
+    "securitySchemes": [
+      "BdgrzSessionCookie",
+      "BdgrzBearer"
+    ],
+    "responses": [
+      "CntrylPortiaHttpProblemResponse",
+      "CntrylPortiaHttpUnauthorizedResponse"
+    ],
+    "schemas": [
+      "Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+      "Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800_1"
+    ]
+  },
+  "schema_normalization": {
+    "json_pointer": "#/components/schemas/Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800/properties/gaps/items/properties/sources/items",
+    "original_schema": {
+      "allOf": [
+        {
+          "$ref": "#/components/schemas/Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800_1"
+        },
+        {
+          "not": {
+            "type": "null"
+          }
+        }
+      ]
+    },
+    "normalized_schema": {
+      "$ref": "#/components/schemas/Portia_9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800_1"
+    },
+    "referenced_schema_root_type": "object",
+    "referenced_schema_nullable_keyword": null,
+    "equivalence": "The referenced schema root has type object, which excludes null; the allOf not-null branch adds no constraint and was removed only at this pointer. Every other schema and operation shape is unchanged."
+  },
+  "generator": {
+    "package": "@askrjs/cli",
+    "package_version": "0.5.0",
+    "node_executable": "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+    "node_version": "v24.18.0",
+    "cli_executable": "/Users/jrepanich/.npm/_npx/c54e3d6c1ff326d3/node_modules/@askrjs/cli/dist/cli.js",
+    "cli_entry_sha256": "47aab7b187e640b29d1612a9777ad08ba1338f799b7c5382a0a62acbac5fc017",
+    "command": [
+      "/Users/jrepanich/.vite-plus/js_runtime/node/24.18.0/bin/node",
+      "/Users/jrepanich/.npm/_npx/c54e3d6c1ff326d3/node_modules/@askrjs/cli/dist/cli.js",
+      "generate",
+      "openapi/readiness-assessment.json",
+      "--output",
+      "/tmp/compliance-web-readiness-generated",
+      "--ref-max-bytes",
+      "33554432",
+      "--json"
+    ],
+    "exit_code": 0,
+    "output_hashes": {
+      ".askr-generated.json": "e4e4ccd1ca7235ccb362a096035e1ff06764c24a98492af234693614c41d21ad",
+      "api.ts": "c59a02b254636bd0e9f7e073e831792b69c2950c98ba0f5b71bf9336a7c57142",
+      "index.ts": "697911d5953f5e5c52a854dee2a9467563e4c48aeb964561c1a191161185ff58",
+      "operations.ts": "8d5bb50fa73891e5de1d84538f43e146811bc13e115eb7ea4d962c57295d1824",
+      "schemas.ts": "deec5f4330d5379bf37139aae2114e4352a7ccdea862500d2694c46b295de735"
+    }
+  },
+  "selective_merge": {
+    "operations_ts": {
+      "target_operation": "GetReadinessAssessment",
+      "target_response_type": "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+      "replaced_schema_imports": [
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A6",
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A61"
+      ],
+      "imported_schema": "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "a604bad5cd192bd1a54044582edfc7d59648e91c70b7b2da19579bb08aecc5e6"
+    },
+    "schemas_ts": {
+      "replaced_types": [
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A6",
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A61"
+      ],
+      "generated_types": [
+        "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+        "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E960896848001"
+      ],
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "0cd7f8e0193cb5730da76586ade0f40f48ec74a1c17a2d715da8973434d482d3"
+    },
+    "api_ts": {
+      "target_operation": "getReadinessAssessment",
+      "target_response_type": "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+      "replaced_schema_imports": [
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A6",
+        "PortiaC95DF1FEF74AB78C247A61B1C7CA71C04A8A85C72948A02B997E3FFA2295B1A61"
+      ],
+      "imported_schema": "Portia9FEBAA12E65E2FC9318D02CDB877D457BB27AC715BFCFD019F28E96089684800",
+      "unrelated_bytes_preserved": true,
+      "merged_file_sha256": "e0e68e01c9505ceb766463fdeed41ebe0fc686bfc7ac74577ee8490838495999"
+    }
+  }
+}
