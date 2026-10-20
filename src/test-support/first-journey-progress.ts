@@ -109,7 +109,7 @@ export type JourneyProgressEvent = {
   step: JourneyStepName;
   path: string;
   visibleText: string[];
-  readinessResponses?: JourneyReadinessApiResponse[];
+  readinessRequests?: JourneyReadinessApiRequestState[];
   formValid?: boolean;
   createButtonEnabled?: boolean;
   createButtonType?: 'submit' | 'button' | 'reset' | 'other';
@@ -128,8 +128,24 @@ export type JourneyReadinessApiResponse = {
   status: number;
 };
 
+export type JourneyReadinessApiEvent =
+  | {
+      endpoint: JourneyReadinessApiEndpoint;
+      kind: 'started' | 'finished' | 'failed';
+    }
+  | { endpoint: JourneyReadinessApiEndpoint; kind: 'response'; status: number };
+
+export type JourneyReadinessApiRequestState = {
+  endpoint: JourneyReadinessApiEndpoint;
+  started: number;
+  responseStatuses: number[];
+  finished: number;
+  failed: number;
+  inFlight: number;
+};
+
 export type JourneyProgressDiagnostics = {
-  readinessResponses?: readonly JourneyReadinessApiResponse[];
+  readinessRequests?: readonly JourneyReadinessApiRequestState[];
   formValid?: boolean;
   createButtonEnabled?: boolean;
   createButtonType?: 'submit' | 'button' | 'reset' | 'other';
@@ -193,13 +209,32 @@ export function createJourneyProgressEvent(
     visibleText: safeText,
   };
 
-  if (diagnostics.readinessResponses?.length) {
-    event.readinessResponses = diagnostics.readinessResponses.flatMap(
-      (response) =>
-        isReadinessApiEndpoint(response.endpoint) &&
-        isHttpStatus(response.status)
-          ? [{ endpoint: response.endpoint, status: response.status }]
-          : []
+  if (diagnostics.readinessRequests?.length) {
+    event.readinessRequests = diagnostics.readinessRequests.flatMap(
+      (request) => {
+        if (
+          !isReadinessApiEndpoint(request.endpoint) ||
+          !isNonnegativeInteger(request.started) ||
+          !isNonnegativeInteger(request.finished) ||
+          !isNonnegativeInteger(request.failed)
+        ) {
+          return [];
+        }
+        const responseStatuses = request.responseStatuses.filter(isHttpStatus);
+        return [
+          {
+            endpoint: request.endpoint,
+            started: request.started,
+            responseStatuses,
+            finished: request.finished,
+            failed: request.failed,
+            inFlight: Math.max(
+              0,
+              request.started - request.finished - request.failed
+            ),
+          },
+        ];
+      }
     );
   }
 
@@ -237,6 +272,13 @@ export function summarizeTenantReadinessResponse(
   href: string,
   status: number
 ): JourneyReadinessApiResponse | null {
+  const endpoint = summarizeTenantReadinessEndpoint(href);
+  return endpoint && isHttpStatus(status) ? { endpoint, status } : null;
+}
+
+export function summarizeTenantReadinessEndpoint(
+  href: string
+): JourneyReadinessApiEndpoint | null {
   let pathname: string;
   try {
     pathname = new URL(href).pathname;
@@ -244,18 +286,50 @@ export function summarizeTenantReadinessResponse(
     return null;
   }
 
-  const endpoint: JourneyReadinessApiEndpoint | null =
-    /^\/api\/v1\/tenant-slugs\/[^/]+\/mine$/.test(pathname)
-      ? 'tenant-slug-resolution'
-      : /^\/api\/v1\/tenants\/[^/]+\/provisioning-status$/.test(pathname)
-        ? 'tenant-provisioning-status'
-        : pathname === '/api/v1/tenants/mine'
-          ? 'tenant-memberships'
-          : /^\/api\/v1\/tenants\/[^/]+$/.test(pathname)
-            ? 'tenant-workspace'
-            : null;
+  return /^\/api\/v1\/tenant-slugs\/[^/]+\/mine$/.test(pathname)
+    ? 'tenant-slug-resolution'
+    : /^\/api\/v1\/tenants\/[^/]+\/provisioning-status$/.test(pathname)
+      ? 'tenant-provisioning-status'
+      : pathname === '/api/v1/tenants/mine'
+        ? 'tenant-memberships'
+        : /^\/api\/v1\/tenants\/[^/]+$/.test(pathname)
+          ? 'tenant-workspace'
+          : null;
+}
 
-  return endpoint && isHttpStatus(status) ? { endpoint, status } : null;
+export function summarizeTenantReadinessEvents(
+  events: readonly JourneyReadinessApiEvent[]
+): JourneyReadinessApiRequestState[] {
+  const states = new Map<
+    JourneyReadinessApiEndpoint,
+    Omit<JourneyReadinessApiRequestState, 'inFlight'>
+  >();
+
+  for (const event of events) {
+    if (!isReadinessApiEndpoint(event.endpoint)) continue;
+    let state = states.get(event.endpoint);
+    if (!state) {
+      state = {
+        endpoint: event.endpoint,
+        started: 0,
+        responseStatuses: [],
+        finished: 0,
+        failed: 0,
+      };
+      states.set(event.endpoint, state);
+    }
+    if (event.kind === 'started') state.started += 1;
+    else if (event.kind === 'finished') state.finished += 1;
+    else if (event.kind === 'failed') state.failed += 1;
+    else if (event.kind === 'response' && isHttpStatus(event.status)) {
+      state.responseStatuses.push(event.status);
+    }
+  }
+
+  return [...states.values()].map((state) => ({
+    ...state,
+    inFlight: Math.max(0, state.started - state.finished - state.failed),
+  }));
 }
 
 function isReadinessApiEndpoint(
@@ -271,4 +345,8 @@ function isReadinessApiEndpoint(
 
 function isHttpStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 100 && status <= 599;
+}
+
+function isNonnegativeInteger(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }

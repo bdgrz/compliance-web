@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createJourneyProgressEvent,
+  summarizeTenantReadinessEvents,
   summarizeTenantReadinessResponse,
+  type JourneyReadinessApiEvent,
   type JourneyStepName,
 } from './first-journey-progress.js';
 
@@ -104,13 +106,37 @@ describe('first-journey progress diagnostics', () => {
       )
     ).toBeNull();
 
+    const requestState = summarizeTenantReadinessEvents([
+      {
+        endpoint: resolution!.endpoint,
+        kind: 'started',
+      },
+      {
+        endpoint: resolution!.endpoint,
+        kind: 'response',
+        status: resolution!.status,
+      },
+      {
+        endpoint: resolution!.endpoint,
+        kind: 'finished',
+      },
+      {
+        endpoint: provisioning!.endpoint,
+        kind: 'started',
+      },
+      {
+        endpoint: provisioning!.endpoint,
+        kind: 'response',
+        status: provisioning!.status,
+      },
+    ]);
     const event = createJourneyProgressEvent(
       'founder organization provisioning status checked',
       'http://127.0.0.1:5173/organizations/new',
       [
         'Your organization has been created and is still getting ready. Check status in a moment.',
       ],
-      { readinessResponses: [resolution!, provisioning!] }
+      { readinessRequests: requestState }
     );
     expect(event).toEqual({
       step: 'founder organization provisioning status checked',
@@ -118,10 +144,81 @@ describe('first-journey progress diagnostics', () => {
       visibleText: [
         'Your organization has been created and is still getting ready. Check status in a moment.',
       ],
-      readinessResponses: [resolution, provisioning],
+      readinessRequests: [
+        {
+          endpoint: 'tenant-slug-resolution',
+          started: 1,
+          responseStatuses: [404],
+          finished: 1,
+          failed: 0,
+          inFlight: 0,
+        },
+        {
+          endpoint: 'tenant-provisioning-status',
+          started: 1,
+          responseStatuses: [200],
+          finished: 0,
+          failed: 0,
+          inFlight: 1,
+        },
+      ],
     });
     expect(JSON.stringify(event)).not.toMatch(
       /private-slug|private-tenant-id|secret/
     );
+  });
+
+  it('ShouldDistinguishAnInFlightProvisioningRequestFromNoResponse', () => {
+    expect(summarizeTenantReadinessEvents([])).toEqual([]);
+
+    const events: JourneyReadinessApiEvent[] = [
+      { endpoint: 'tenant-provisioning-status', kind: 'started' },
+    ];
+
+    expect(summarizeTenantReadinessEvents(events)).toEqual([
+      {
+        endpoint: 'tenant-provisioning-status',
+        started: 1,
+        responseStatuses: [],
+        finished: 0,
+        failed: 0,
+        inFlight: 1,
+      },
+    ]);
+
+    events.push({
+      endpoint: 'tenant-provisioning-status',
+      kind: 'failed',
+    });
+    expect(summarizeTenantReadinessEvents(events)).toEqual([
+      {
+        endpoint: 'tenant-provisioning-status',
+        started: 1,
+        responseStatuses: [],
+        finished: 0,
+        failed: 1,
+        inFlight: 0,
+      },
+    ]);
+
+    const responded = summarizeTenantReadinessEvents([
+      { endpoint: 'tenant-provisioning-status', kind: 'started' },
+      {
+        endpoint: 'tenant-provisioning-status',
+        kind: 'response',
+        status: 404,
+      },
+      { endpoint: 'tenant-provisioning-status', kind: 'finished' },
+    ]);
+    expect(responded).toEqual([
+      {
+        endpoint: 'tenant-provisioning-status',
+        started: 1,
+        responseStatuses: [404],
+        finished: 1,
+        failed: 0,
+        inFlight: 0,
+      },
+    ]);
   });
 });

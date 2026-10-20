@@ -1,6 +1,12 @@
 import net from 'node:net';
 
-import { expect, test, type Page, type Response } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Page,
+  type Request,
+  type Response,
+} from '@playwright/test';
 import type {
   CreateBoundaryResponse200,
   CreateProgramResponse200,
@@ -13,10 +19,12 @@ import type {
 import {
   createJourneyProgressEvent,
   type JourneyParticipant,
+  type JourneyReadinessApiEvent,
   type JourneyProgressDiagnostics,
-  type JourneyReadinessApiResponse,
+  type JourneyReadinessApiRequestState,
   type JourneyStepName,
-  summarizeTenantReadinessResponse,
+  summarizeTenantReadinessEndpoint,
+  summarizeTenantReadinessEvents,
 } from '../src/test-support/first-journey-progress.js';
 import { createMailboxConsumeRequest } from '../src/test-support/first-journey-mailbox.js';
 
@@ -69,22 +77,42 @@ async function checkpoint(
   process.stderr.write(`[first-journey-progress] ${JSON.stringify(event)}\n`);
 }
 
-function observeTenantReadinessResponses(page: Page): {
-  snapshot: () => JourneyReadinessApiResponse[];
+function observeTenantReadinessRequests(page: Page): {
+  snapshot: () => JourneyReadinessApiRequestState[];
   dispose: () => void;
 } {
-  const observed: JourneyReadinessApiResponse[] = [];
-  const onResponse = (response: Response) => {
-    const summary = summarizeTenantReadinessResponse(
-      response.url(),
-      response.status()
+  const observed: JourneyReadinessApiEvent[] = [];
+  const append = (
+    request: Request,
+    kind: 'started' | 'response' | 'finished' | 'failed',
+    status?: number
+  ) => {
+    if (request.method() !== 'GET' || observed.length >= 240) return;
+    const endpoint = summarizeTenantReadinessEndpoint(request.url());
+    if (!endpoint) return;
+    observed.push(
+      kind === 'response'
+        ? { endpoint, kind, status: status ?? 0 }
+        : { endpoint, kind }
     );
-    if (summary && observed.length < 80) observed.push(summary);
   };
+  const onRequest = (request: Request) => append(request, 'started');
+  const onResponse = (response: Response) =>
+    append(response.request(), 'response', response.status());
+  const onRequestFinished = (request: Request) => append(request, 'finished');
+  const onRequestFailed = (request: Request) => append(request, 'failed');
+  page.on('request', onRequest);
   page.on('response', onResponse);
+  page.on('requestfinished', onRequestFinished);
+  page.on('requestfailed', onRequestFailed);
   return {
-    snapshot: () => observed.slice(),
-    dispose: () => page.off('response', onResponse),
+    snapshot: () => summarizeTenantReadinessEvents(observed),
+    dispose: () => {
+      page.off('request', onRequest);
+      page.off('response', onResponse);
+      page.off('requestfinished', onRequestFinished);
+      page.off('requestfailed', onRequestFailed);
+    },
   };
 }
 
@@ -320,12 +348,12 @@ async function signInAndVerify(
 async function waitForOrganizationReady(
   page: Page,
   slug: string,
-  readinessResponses: () => JourneyReadinessApiResponse[]
+  readinessRequests: () => JourneyReadinessApiRequestState[]
 ): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (new URL(page.url()).pathname === `/${slug}`) {
       await checkpoint(page, 'founder organization page opened', {
-        readinessResponses: readinessResponses(),
+        readinessRequests: readinessRequests(),
       });
       return;
     }
@@ -338,18 +366,18 @@ async function waitForOrganizationReady(
       await checkpoint(
         page,
         'founder organization provisioning status checked',
-        { readinessResponses: readinessResponses() }
+        { readinessRequests: readinessRequests() }
       );
     }
   }
   await checkpoint(page, 'founder organization provisioning status checked', {
-    readinessResponses: readinessResponses(),
+    readinessRequests: readinessRequests(),
   });
   try {
     await page.waitForURL(`**/${slug}`, { timeout: 30_000 });
   } catch {
     await checkpoint(page, 'founder organization provisioning status checked', {
-      readinessResponses: readinessResponses(),
+      readinessRequests: readinessRequests(),
     });
     throw new Error(
       'The organization workspace did not open after readiness checks.'
@@ -771,7 +799,7 @@ test('first organization admin provisions a scoped team journey and reassignment
     expect(createButtonEnabled).toBe(true);
     expect(createButtonType).toBe('submit');
 
-    const readinessObserver = observeTenantReadinessResponses(founder);
+    const readinessObserver = observeTenantReadinessRequests(founder);
     const registered = founder
       .waitForResponse(apiResponse('POST', /\/api\/v1\/tenants$/), {
         timeout: 30_000,
