@@ -129,6 +129,15 @@ function fill(form: Element, labelStart: string, value: string) {
   field.dispatchEvent(new Event(field.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
 }
 
+function fillSearch(container: HTMLElement, label: string, value: string) {
+  const field = [...container.querySelectorAll('label')]
+    .find((item) => item.textContent?.trim() === label)
+    ?.querySelector<HTMLInputElement>('input[type="search"]');
+  expect(field).not.toBeNull();
+  field!.value = value;
+  field!.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function submit(form: Element) {
   form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 }
@@ -452,6 +461,145 @@ describe('technology and information inventory (R1-12 frontend #228)', () => {
 
     // Assert
     expect(container.querySelector('form')).toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldSearchAndCountOnlyServerReturnedAssetsAndFlowsAcrossPages', async () => {
+    // Arrange
+    inventoryAnswers();
+    const visibleRestrictedAsset = {
+      ...asset,
+      information_asset_id: '0190a1b2-0000-7000-8000-0000000000f2',
+      revision: 2,
+      content: { ...asset.content, name: 'Restricted payroll ledger', classification: 'restricted' },
+    };
+    const visibleRestrictedFlow = {
+      ...flow,
+      data_flow_id: '0190a1b2-0000-7000-8000-0000000000fa',
+      revision: 3,
+      content: { ...flow.content, purpose: 'Restricted payroll export', classification: 'restricted' },
+    };
+    api.reply(`${base}/information-assets`, 200, { items: [asset], next_cursor: 'assets-page-2' });
+    api.reply(`GET ${base}/information-assets?cursor=assets-page-2`, 200, { items: [visibleRestrictedAsset], next_cursor: null });
+    api.reply(`${base}/data-flows`, 200, { items: [flow], next_cursor: 'flows-page-2' });
+    api.reply(`GET ${base}/data-flows?cursor=flows-page-2`, 200, { items: [visibleRestrictedFlow], next_cursor: null });
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+
+    // Act and assert: both pages count, and an omitted restricted record cannot be found or counted.
+    press(container, 'Information assets');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 2 of 2 information assets.'));
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 2 of 2 data flows.'));
+    press(container, 'Information assets');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 2 of 2 information assets.'));
+    const loadedListRequestCount = api.requestUrls.filter(({ url }) =>
+      [`${base}/information-assets`, `${base}/data-flows`].includes(new URL(url).pathname)
+    ).length;
+    fillSearch(container, 'Search information assets', 'Restricted payroll ledger');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 1 of 2 information assets.'));
+    expect(container.querySelectorAll('.inventory-record')).toHaveLength(1);
+    expect(container.textContent).toContain('Restricted payroll ledger');
+    fillSearch(container, 'Search information assets', 'Withheld payroll ledger');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 0 of 2 information assets.'));
+    expect(container.querySelectorAll('.inventory-record')).toHaveLength(0);
+    expect(container.textContent).toContain('No information assets match your search.');
+    expect(container.textContent).not.toContain('Withheld payroll ledger');
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 2 of 2 data flows.'));
+    fillSearch(container, 'Search data flows', 'Restricted payroll export');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 1 of 2 data flows.'));
+    expect(container.querySelectorAll('.inventory-record')).toHaveLength(1);
+    fillSearch(container, 'Search data flows', 'Withheld payroll transfer');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 0 of 2 data flows.'));
+    expect(container.querySelectorAll('.inventory-record')).toHaveLength(0);
+    expect(container.textContent).toContain('No data flows match your search.');
+    expect(container.textContent).not.toContain('Withheld payroll transfer');
+    expect(await accessibilityViolations(container)).toEqual([]);
+    expect(
+      api.requestUrls.filter(({ url }) => [`${base}/information-assets`, `${base}/data-flows`].includes(new URL(url).pathname))
+    ).toHaveLength(loadedListRequestCount);
+    expect(api.requestUrls.some(({ url }) => new URL(url).searchParams.get('cursor') === 'assets-page-2')).toBe(true);
+    expect(api.requestUrls.some(({ url }) => new URL(url).searchParams.get('cursor') === 'flows-page-2')).toBe(true);
+  });
+
+  it('ShouldShowAnAccessibleEmptyAssetSearchGivenNoServerReturnedAssets', async () => {
+    // Arrange
+    inventoryAnswers();
+    api.reply(`${base}/information-assets`, 200, { items: [], next_cursor: null });
+    api.reply(`${base}/data-flows`, 200, { items: [], next_cursor: null });
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+
+    // Act
+    press(container, 'Information assets');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 0 of 0 information assets.'));
+
+    // Assert
+    expect(container.textContent).toContain('No information assets recorded yet.');
+    expect(container.querySelector('input[type="search"]')).not.toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 0 of 0 data flows.'));
+    expect(container.textContent).toContain('No data flows recorded yet.');
+    expect(container.querySelector('input[type="search"]')).not.toBeNull();
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldOfferRetryAndThenShowAssetCountsGivenAListReadFailure', async () => {
+    // Arrange
+    inventoryAnswers();
+    api.reply(`${base}/information-assets`, 503, problem(503, 'Inventory is temporarily unavailable.', true));
+    api.reply(`${base}/data-flows`, 503, problem(503, 'Inventory is temporarily unavailable.', true));
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+    press(container, 'Information assets');
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('Unable to load the information assets.'));
+    expect(await accessibilityViolations(container)).toEqual([]);
+    api.reply(`${base}/information-assets`, 200, { items: [asset], next_cursor: null });
+
+    // Act
+    press(container, 'Try again');
+
+    // Assert
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 1 of 1 information assets.'));
+    expect(container.textContent).toContain('Customer records');
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    api.reply(`${base}/data-flows`, 200, { items: [flow], next_cursor: null });
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('Unable to load the data flows.'));
+    expect(await accessibilityViolations(container)).toEqual([]);
+    press(container, 'Try again');
+    await vi.waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('Showing 1 of 1 data flows.'));
+    expect(container.textContent).toContain('Persist orders');
+    expect(await accessibilityViolations(container)).toEqual([]);
+  });
+
+  it('ShouldKeepAssetSearchUnavailableGivenAForbiddenInventoryList', async () => {
+    // Arrange
+    inventoryAnswers();
+    api.reply(`${base}/information-assets`, 403, problem(403, 'Forbidden'));
+    api.reply(`${base}/data-flows`, 403, problem(403, 'Forbidden'));
+    const container = mount(InventoryPage);
+    await vi.waitFor(() => expect(container.textContent).toContain('Orders DB'));
+
+    // Act
+    press(container, 'Information assets');
+
+    // Assert
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('You do not have permission to load the information assets.'));
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Try again')).toBe(false);
+    expect(await accessibilityViolations(container)).toEqual([]);
+
+    press(container, 'Data flows');
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('You do not have permission to load the data flows.'));
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Try again')).toBe(false);
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 

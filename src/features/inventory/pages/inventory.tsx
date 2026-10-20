@@ -65,6 +65,53 @@ function optional(value: string | null) {
   return value && value.trim() !== '' ? value.trim() : null;
 }
 
+function matchesInventorySearch(query: string, visibleText: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return normalizedQuery === '' || visibleText.toLowerCase().includes(normalizedQuery);
+}
+
+function SearchableInventoryList<T>({
+  items,
+  label,
+  noun,
+  query,
+  onQueryChange,
+  searchText,
+  emptyMessage,
+  noMatchesMessage,
+  renderItem,
+}: {
+  items: T[];
+  label: string;
+  noun: string;
+  query: string;
+  onQueryChange: (value: string) => void;
+  searchText: (item: T) => string;
+  emptyMessage: string;
+  noMatchesMessage: string;
+  renderItem: (item: T) => unknown;
+}) {
+  const visibleItems = items.filter((item) => matchesInventorySearch(query, searchText(item)));
+  return (
+    <Stack gap="sm">
+      <label>
+        {label}
+        <input type="search" value={query} onInput={(event: Event) => onQueryChange(inputValue(event))} />
+      </label>
+      <p role="status">
+        Showing {visibleItems.length} of {items.length} {noun}.
+      </p>
+      {items.length === 0 ? (
+        <p>{emptyMessage}</p>
+      ) : visibleItems.length === 0 ? (
+        <p>{noMatchesMessage}</p>
+      ) : (
+        <ul className="plain-list inventory-records">{visibleItems.map(renderItem)}</ul>
+      )}
+    </Stack>
+  );
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { timeZone: 'UTC' });
 }
@@ -671,6 +718,8 @@ function assetSummary(a: InformationAsset, owner: (id: string) => string) {
 export function InventoryPage() {
   const [section, setSection] = state<Section>('components');
   const [version, setVersion] = state(0);
+  const [assetSearch, setAssetSearch] = state('');
+  const [flowSearch, setFlowSearch] = state('');
   const people = resource(() => listPeople(), [version()]);
   const components = resource(() => listComponents(), [version()]);
   const assets = resource(() => listAssets(), [version()]);
@@ -702,7 +751,8 @@ export function InventoryPage() {
   function listState<T>(
     list: { pending: boolean; error: Error | null | undefined; value: T[] | null | undefined; refresh: () => void },
     noun: string,
-    render: (items: T[]) => unknown
+    render: (items: T[]) => unknown,
+    options: { renderWhenEmpty?: boolean } = {}
   ) {
     if (list.pending && !list.value) return <Spinner label={`Loading ${noun}`} />;
     if (list.error) {
@@ -719,7 +769,7 @@ export function InventoryPage() {
       );
     }
     const items = list.value ?? [];
-    if (items.length === 0) return <p>No {noun} recorded yet.</p>;
+    if (items.length === 0 && !options.renderWhenEmpty) return <p>No {noun} recorded yet.</p>;
     return render(items);
   }
 
@@ -805,24 +855,37 @@ export function InventoryPage() {
             </CardHeader>
             <CardContent>
               <Stack gap="md">
-                {listState(assets, 'information assets', (items: InformationAsset[]) => (
-                  <ul className="plain-list inventory-records">
-                    {items.map((item) => (
-                      <RecordRow
-                        name={item.name}
-                        summary={assetSummary(item, owner)}
-                        editor={() => <AssetForm existing={item} people={peopleList} flows={flows.value ?? []} onSaved={reload} />}
-                        history={() => (
-                          <History
-                            load={() => listAssetRevisions(item.informationAssetId)}
-                            describe={(r: InformationAsset) => `${r.name}; ${assetSummary(r, owner)}`}
-                          />
-                        )}
-                        boundaries={() => <Boundaries load={() => listAssetBoundaries(item.informationAssetId)} />}
-                      />
-                    ))}
-                  </ul>
-                ))}
+                {listState(
+                  assets,
+                  'information assets',
+                  (items: InformationAsset[]) => (
+                    <SearchableInventoryList
+                      items={items}
+                      label="Search information assets"
+                      noun="information assets"
+                      query={assetSearch()}
+                      onQueryChange={setAssetSearch}
+                      searchText={(item) => `${item.name} ${assetSummary(item, owner)}`}
+                      emptyMessage="No information assets recorded yet."
+                      noMatchesMessage="No information assets match your search."
+                      renderItem={(item) => (
+                        <RecordRow
+                          name={item.name}
+                          summary={assetSummary(item, owner)}
+                          editor={() => <AssetForm existing={item} people={peopleList} flows={flows.value ?? []} onSaved={reload} />}
+                          history={() => (
+                            <History
+                              load={() => listAssetRevisions(item.informationAssetId)}
+                              describe={(r: InformationAsset) => `${r.name}; ${assetSummary(r, owner)}`}
+                            />
+                          )}
+                          boundaries={() => <Boundaries load={() => listAssetBoundaries(item.informationAssetId)} />}
+                        />
+                      )}
+                    />
+                  ),
+                  { renderWhenEmpty: true }
+                )}
                 <details>
                   <summary>Record an information asset</summary>
                   <AssetForm existing={null} people={peopleList} onSaved={reload} />
@@ -841,22 +904,38 @@ export function InventoryPage() {
             </CardHeader>
             <CardContent>
               <Stack gap="md">
-                {listState(flows, 'data flows', (items: DataFlow[]) => (
-                  <ul className="plain-list inventory-records">
-                    {items.map((item) => (
-                      <RecordRow
-                        name={item.purpose}
-                        summary={flowSummary(item)}
-                        editor={() => (
-                          <FlowForm existing={item} people={peopleList} components={componentList} assets={assetList} onSaved={reload} />
-                        )}
-                        history={() => (
-                          <History load={() => listFlowRevisions(item.dataFlowId)} describe={(r: DataFlow) => `${r.purpose}; ${flowSummary(r)}`} />
-                        )}
-                      />
-                    ))}
-                  </ul>
-                ))}
+                {listState(
+                  flows,
+                  'data flows',
+                  (items: DataFlow[]) => (
+                    <SearchableInventoryList
+                      items={items}
+                      label="Search data flows"
+                      noun="data flows"
+                      query={flowSearch()}
+                      onQueryChange={setFlowSearch}
+                      searchText={(item) => `${item.purpose} ${flowSummary(item)}`}
+                      emptyMessage="No data flows recorded yet."
+                      noMatchesMessage="No data flows match your search."
+                      renderItem={(item) => (
+                        <RecordRow
+                          name={item.purpose}
+                          summary={flowSummary(item)}
+                          editor={() => (
+                            <FlowForm existing={item} people={peopleList} components={componentList} assets={assetList} onSaved={reload} />
+                          )}
+                          history={() => (
+                            <History
+                              load={() => listFlowRevisions(item.dataFlowId)}
+                              describe={(r: DataFlow) => `${r.purpose}; ${flowSummary(r)}`}
+                            />
+                          )}
+                        />
+                      )}
+                    />
+                  ),
+                  { renderWhenEmpty: true }
+                )}
                 <details>
                   <summary>Record a data flow</summary>
                   <FlowForm existing={null} people={peopleList} components={componentList} assets={assetList} onSaved={reload} />
