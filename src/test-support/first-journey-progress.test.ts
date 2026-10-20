@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createOrganizationReadinessTimingTracker,
   createJourneyProgressEvent,
   snapshotTenantReadinessEvents,
   summarizeTenantProvisioningState,
@@ -81,6 +82,88 @@ describe('first-journey progress diagnostics', () => {
     expect(JSON.stringify([formEvent, registrationEvent])).not.toContain(
       'unapproved form value'
     );
+  });
+
+  it('ShouldLogOnlyAllowlistedJourneyTimingsAndGrantCatalogState', () => {
+    const event = createJourneyProgressEvent(
+      'founder member grant catalog responses received',
+      'http://127.0.0.1:5173/acme/members/user-id?private=query',
+      ['Loading access grant options', 'private@example.com', 'one-time-code'],
+      {
+        elapsedMs: 12_345,
+        registrationToFirstSlugResolutionMs: 1_234,
+        roleCatalogStatus: 200,
+        programCatalogStatus: 403,
+        grantOptionsLoading: false,
+        roleSelectorVisible: true,
+        scopeSelectorVisible: true,
+        grantOptionsRetryVisible: false,
+      }
+    );
+
+    expect(event).toEqual({
+      step: 'founder member grant catalog responses received',
+      path: '/acme/members/user-id',
+      visibleText: [],
+      elapsedMs: 12_345,
+      registrationToFirstSlugResolutionMs: 1_234,
+      roleCatalogStatus: 200,
+      programCatalogStatus: 403,
+      grantOptionsLoading: false,
+      roleSelectorVisible: true,
+      scopeSelectorVisible: true,
+      grantOptionsRetryVisible: false,
+    });
+    expect(JSON.stringify(event)).not.toMatch(
+      /private-query|private@example\.com|one-time-code/
+    );
+
+    const invalidValues = createJourneyProgressEvent(
+      'founder member grant catalog responses received',
+      'http://127.0.0.1:5173/acme/members',
+      [],
+      {
+        elapsedMs: -1,
+        registrationToFirstSlugResolutionMs:
+          'private-value' as unknown as number,
+        roleCatalogStatus: 700,
+        programCatalogStatus: 'private-id' as unknown as number,
+        grantOptionsLoading: 'private-value' as unknown as boolean,
+        roleSelectorVisible: true,
+        scopeSelectorVisible: false,
+        grantOptionsRetryVisible: false,
+      }
+    );
+    expect(invalidValues).toEqual({
+      step: 'founder member grant catalog responses received',
+      path: '/acme/members',
+      visibleText: [],
+      roleSelectorVisible: true,
+      scopeSelectorVisible: false,
+      grantOptionsRetryVisible: false,
+    });
+    expect(JSON.stringify(invalidValues)).not.toContain('private');
+  });
+
+  it('ShouldMeasureFirstSuccessfulSlugResolutionFromRegistrationResponse', () => {
+    let now = 100;
+    const timing = createOrganizationReadinessTimingTracker(() => now);
+
+    timing.recordSlugResolutionResponse(200);
+    now = 200;
+    timing.recordRegistrationResponse(500);
+    expect(timing.registrationToFirstSlugResolutionMs()).toBeUndefined();
+    now = 300;
+    timing.recordRegistrationResponse(200);
+    now = 450;
+    timing.recordSlugResolutionResponse(404);
+    expect(timing.registrationToFirstSlugResolutionMs()).toBeUndefined();
+    now = 1_550;
+    timing.recordSlugResolutionResponse(200);
+    now = 2_000;
+    timing.recordSlugResolutionResponse(200);
+
+    expect(timing.registrationToFirstSlugResolutionMs()).toBe(1_250);
   });
 
   it('ShouldSummarizeReadinessResponsesWithoutKeepingRequestIdentifiers', () => {

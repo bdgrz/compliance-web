@@ -17,6 +17,7 @@ import type {
   RegisterTenantResponse200,
 } from '../src/api-client/operations.js';
 import {
+  createOrganizationReadinessTimingTracker,
   createJourneyProgressEvent,
   snapshotTenantReadinessEvents,
   type JourneyParticipant,
@@ -41,6 +42,8 @@ type MailboxReply = { status: string; token?: string };
 const mailboxSocket = process.env.COMPLIANCE_E2E_MAILBOX_SOCKET;
 const orgName = 'First Journey Example';
 const programName = 'First Journey SOC 2';
+let journeyStartedAt: number | undefined;
+let organizationReadinessTiming = createOrganizationReadinessTimingTracker();
 
 function pathOf(response: Response): string {
   return new URL(response.url()).pathname;
@@ -69,12 +72,19 @@ async function checkpoint(
   } catch {
     // A checkpoint must not replace the actual page or journey failure.
   }
-  const event = createJourneyProgressEvent(
-    step,
-    page.url(),
-    candidates,
-    diagnostics
-  );
+  const event = createJourneyProgressEvent(step, page.url(), candidates, {
+    ...diagnostics,
+    ...(journeyStartedAt === undefined
+      ? {}
+      : { elapsedMs: Math.max(0, Date.now() - journeyStartedAt) }),
+    ...(organizationReadinessTiming.registrationToFirstSlugResolutionMs() ===
+    undefined
+      ? {}
+      : {
+          registrationToFirstSlugResolutionMs:
+            organizationReadinessTiming.registrationToFirstSlugResolutionMs(),
+        }),
+  });
   process.stderr.write(`[first-journey-progress] ${JSON.stringify(event)}\n`);
 }
 
@@ -101,6 +111,19 @@ function observeTenantReadinessRequests(page: Page): {
   const onRequest = (request: Request) => append(request, 'started');
   const onResponse = (response: Response) => {
     const request = response.request();
+    const requestPath = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && requestPath === '/api/v1/tenants') {
+      organizationReadinessTiming.recordRegistrationResponse(response.status());
+    }
+    if (
+      request.method() === 'GET' &&
+      summarizeTenantReadinessEndpoint(request.url()) ===
+        'tenant-slug-resolution'
+    ) {
+      organizationReadinessTiming.recordSlugResolutionResponse(
+        response.status()
+      );
+    }
     append(request, 'response', response.status());
     if (
       request.method() !== 'GET' ||
@@ -401,7 +424,8 @@ async function waitForOrganizationReady(
     const checking = await checkingStatus.isVisible().catch(() => false);
     if (!checking && Date.now() >= nextStatusCheckAt) {
       const visible = await checkStatus.isVisible().catch(() => false);
-      const enabled = visible && (await checkStatus.isEnabled().catch(() => false));
+      const enabled =
+        visible && (await checkStatus.isEnabled().catch(() => false));
       if (enabled) {
         try {
           await checkStatus.click({ timeout: 1_000 });
@@ -507,12 +531,55 @@ async function grantOrganizationAdmin(
   const memberRow = page.getByRole('listitem').filter({ hasText: email });
   await expect(memberRow.getByRole('link')).toBeVisible();
 
-  const roleCatalogRequest = page.waitForResponse(
-    apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/roles$/)
-  );
+  const roleCatalogRequest = page
+    .waitForResponse(apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/roles$/), {
+      timeout: 10_000,
+    })
+    .catch(() => null);
+  const programCatalogRequest = page
+    .waitForResponse(
+      apiResponse('GET', /\/api\/v1\/tenants\/[^/]+\/programs$/),
+      { timeout: 10_000 }
+    )
+    .catch(() => null);
   await memberRow.getByRole('link').click();
-  await page.waitForURL(`**/${slug}/members/${userId}`);
-  const roleCatalogResponse = await roleCatalogRequest;
+  await page.waitForURL(`**/${slug}/members/${userId}`, { timeout: 10_000 });
+  const [roleCatalogResponse, programCatalogResponse] = await Promise.all([
+    roleCatalogRequest,
+    programCatalogRequest,
+  ]);
+  const roleSelector = page.getByLabel('Role', { exact: true });
+  const scopeSelector = page.getByLabel('Scope', { exact: true });
+  const grantOptionsState = async () => ({
+    grantOptionsLoading: await page
+      .getByLabel('Loading access grant options')
+      .isVisible()
+      .catch(() => false),
+    grantOptionsErrorVisible:
+      (await page.locator('[role="alert"]:visible').count()) > 0,
+    roleSelectorVisible:
+      (await roleSelector.count()) > 0 &&
+      (await roleSelector.isVisible().catch(() => false)),
+    scopeSelectorVisible:
+      (await scopeSelector.count()) > 0 &&
+      (await scopeSelector.isVisible().catch(() => false)),
+    grantOptionsRetryVisible:
+      (await page.getByRole('button', { name: 'Try again' }).count()) > 0 &&
+      (await page
+        .getByRole('button', { name: 'Try again' })
+        .first()
+        .isVisible()
+        .catch(() => false)),
+  });
+  const initialGrantOptionsState = await grantOptionsState();
+  await checkpoint(page, 'founder member grant catalog responses received', {
+    roleCatalogStatus: roleCatalogResponse?.status() ?? null,
+    programCatalogStatus: programCatalogResponse?.status() ?? null,
+    ...initialGrantOptionsState,
+  });
+  if (!roleCatalogResponse || !programCatalogResponse) {
+    throw new Error('One or more access grant catalogs did not respond.');
+  }
   expect(roleCatalogResponse.ok()).toBeTruthy();
   const roleCatalog = (await roleCatalogResponse.json()) as RoleCatalog;
   const organizationAdminRole = (roleCatalog.items ?? []).find(
@@ -520,12 +587,26 @@ async function grantOrganizationAdmin(
   );
   expect(organizationAdminRole?.role_id).toBeTruthy();
 
-  await page
-    .getByLabel('Role', { exact: true })
-    .selectOption({ label: 'Org Admin' });
-  await page
-    .getByLabel('Scope', { exact: true })
-    .selectOption({ label: 'Whole organization' });
+  const selectorWaits = await Promise.allSettled([
+    roleSelector.waitFor({ state: 'visible', timeout: 10_000 }),
+    scopeSelector.waitFor({ state: 'visible', timeout: 10_000 }),
+  ]);
+  if (selectorWaits.some((wait) => wait.status === 'rejected')) {
+    await checkpoint(page, 'founder member grant selector wait failed', {
+      roleCatalogStatus: roleCatalogResponse.status(),
+      programCatalogStatus: programCatalogResponse.status(),
+      ...(await grantOptionsState()),
+    });
+    throw new Error('The organization access grant selectors did not load.');
+  }
+  await checkpoint(page, 'founder member grant selectors ready', {
+    roleCatalogStatus: roleCatalogResponse.status(),
+    programCatalogStatus: programCatalogResponse.status(),
+    ...(await grantOptionsState()),
+  });
+
+  await roleSelector.selectOption({ label: 'Org Admin' });
+  await scopeSelector.selectOption({ label: 'Whole organization' });
 
   const grantResponsePromise = page.waitForResponse(
     apiResponse('POST', /\/api\/v1\/tenants\/[^/]+\/access-grants\/[^/]+$/)
@@ -761,6 +842,8 @@ test('first organization admin provisions a scoped team journey and reassignment
   browser,
 }) => {
   test.setTimeout(15 * 60 * 1000);
+  journeyStartedAt = Date.now();
+  organizationReadinessTiming = createOrganizationReadinessTimingTracker();
   const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const slug = `e2e-${runId}`;
   const founderEmail = `founder-${runId}@example.com`;

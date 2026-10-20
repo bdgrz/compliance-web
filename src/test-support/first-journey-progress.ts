@@ -56,6 +56,9 @@ const journeyStepNames = [
   'founder organization page opened',
   'founder organization provisioning check started',
   'founder organization provisioning status checked',
+  'founder member grant catalog responses received',
+  'founder member grant selectors ready',
+  'founder member grant selector wait failed',
   'founder organization administrator grant submitted',
   'founder organization administrator grant accepted',
   'founder organization administrator grant projection refresh started',
@@ -115,6 +118,15 @@ export type JourneyProgressEvent = {
   createButtonType?: 'submit' | 'button' | 'reset' | 'other';
   registrationRouteFired?: boolean;
   registrationStatus?: number | null;
+  elapsedMs?: number;
+  registrationToFirstSlugResolutionMs?: number;
+  roleCatalogStatus?: number | null;
+  programCatalogStatus?: number | null;
+  grantOptionsLoading?: boolean;
+  grantOptionsErrorVisible?: boolean;
+  roleSelectorVisible?: boolean;
+  scopeSelectorVisible?: boolean;
+  grantOptionsRetryVisible?: boolean;
 };
 
 export type JourneyReadinessApiEndpoint =
@@ -163,6 +175,15 @@ export type JourneyProgressDiagnostics = {
   createButtonType?: 'submit' | 'button' | 'reset' | 'other';
   registrationRouteFired?: boolean;
   registrationStatus?: number | null;
+  elapsedMs?: number;
+  registrationToFirstSlugResolutionMs?: number;
+  roleCatalogStatus?: number | null;
+  programCatalogStatus?: number | null;
+  grantOptionsLoading?: boolean;
+  grantOptionsErrorVisible?: boolean;
+  roleSelectorVisible?: boolean;
+  scopeSelectorVisible?: boolean;
+  grantOptionsRetryVisible?: boolean;
 };
 
 const approvedSteps = new Set<string>([
@@ -233,9 +254,8 @@ export function createJourneyProgressEvent(
           return [];
         }
         const responseStatuses = request.responseStatuses.filter(isHttpStatus);
-        const provisioningStates = request.provisioningStates?.filter(
-          isProvisioningState
-        );
+        const provisioningStates =
+          request.provisioningStates?.filter(isProvisioningState);
         return [
           {
             endpoint: request.endpoint,
@@ -283,8 +303,84 @@ export function createJourneyProgressEvent(
   ) {
     event.registrationStatus = diagnostics.registrationStatus;
   }
+  if (isNonnegativeInteger(diagnostics.elapsedMs)) {
+    event.elapsedMs = diagnostics.elapsedMs;
+  }
+  if (isNonnegativeInteger(diagnostics.registrationToFirstSlugResolutionMs)) {
+    event.registrationToFirstSlugResolutionMs =
+      diagnostics.registrationToFirstSlugResolutionMs;
+  }
+  if (
+    diagnostics.roleCatalogStatus === null ||
+    (typeof diagnostics.roleCatalogStatus === 'number' &&
+      isHttpStatus(diagnostics.roleCatalogStatus))
+  ) {
+    event.roleCatalogStatus = diagnostics.roleCatalogStatus;
+  }
+  if (
+    diagnostics.programCatalogStatus === null ||
+    (typeof diagnostics.programCatalogStatus === 'number' &&
+      isHttpStatus(diagnostics.programCatalogStatus))
+  ) {
+    event.programCatalogStatus = diagnostics.programCatalogStatus;
+  }
+  if (typeof diagnostics.grantOptionsLoading === 'boolean') {
+    event.grantOptionsLoading = diagnostics.grantOptionsLoading;
+  }
+  if (typeof diagnostics.grantOptionsErrorVisible === 'boolean') {
+    event.grantOptionsErrorVisible = diagnostics.grantOptionsErrorVisible;
+  }
+  if (typeof diagnostics.roleSelectorVisible === 'boolean') {
+    event.roleSelectorVisible = diagnostics.roleSelectorVisible;
+  }
+  if (typeof diagnostics.scopeSelectorVisible === 'boolean') {
+    event.scopeSelectorVisible = diagnostics.scopeSelectorVisible;
+  }
+  if (typeof diagnostics.grantOptionsRetryVisible === 'boolean') {
+    event.grantOptionsRetryVisible = diagnostics.grantOptionsRetryVisible;
+  }
 
   return event;
+}
+
+export function createOrganizationReadinessTimingTracker(
+  now: () => number = Date.now
+): {
+  recordRegistrationResponse: (status: number) => void;
+  recordSlugResolutionResponse: (status: number) => void;
+  registrationToFirstSlugResolutionMs: () => number | undefined;
+} {
+  let registrationRespondedAt: number | undefined;
+  let firstSlugResolutionAt: number | undefined;
+
+  return {
+    recordRegistrationResponse(status) {
+      if (status === 200 && registrationRespondedAt === undefined) {
+        registrationRespondedAt = now();
+      }
+    },
+    recordSlugResolutionResponse(status) {
+      if (
+        status === 200 &&
+        registrationRespondedAt !== undefined &&
+        firstSlugResolutionAt === undefined
+      ) {
+        firstSlugResolutionAt = now();
+      }
+    },
+    registrationToFirstSlugResolutionMs() {
+      if (
+        registrationRespondedAt === undefined ||
+        firstSlugResolutionAt === undefined
+      ) {
+        return undefined;
+      }
+      return Math.max(
+        0,
+        Math.round(firstSlugResolutionAt - registrationRespondedAt)
+      );
+    },
+  };
 }
 
 export function summarizeTenantReadinessResponse(
@@ -298,7 +394,11 @@ export function summarizeTenantReadinessResponse(
 export function summarizeTenantProvisioningState(
   payload: unknown
 ): JourneyProvisioningState {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
     return 'unknown';
   }
 
@@ -394,10 +494,9 @@ function isHttpStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 100 && status <= 599;
 }
 
-function isKnownProvisioningState(value: unknown): value is Exclude<
-  JourneyProvisioningState,
-  'unknown'
-> {
+function isKnownProvisioningState(
+  value: unknown
+): value is Exclude<JourneyProvisioningState, 'unknown'> {
   return (
     value === 'provisioning' || value === 'completed' || value === 'rejected'
   );
@@ -409,6 +508,6 @@ function isProvisioningState(
   return isKnownProvisioningState(value) || value === 'unknown';
 }
 
-function isNonnegativeInteger(value: number): boolean {
-  return Number.isInteger(value) && value >= 0;
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
